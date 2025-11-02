@@ -1160,12 +1160,12 @@ void Renderer::createPipeline_RT() {
     auto rgenShaderCode = readFile("shaders/rgen.spv");
     auto rchitShaderCode = readFile("shaders/rchit.spv");
     auto rmissShaderCode = readFile("shaders/rmiss.spv");
-    auto copyToSwapchainCode = readFile("shaders/copy.spv");
+    //auto copyToSwapchainCode = readFile("shaders/copy.spv");
 
     VkShaderModule rgenModule = createShaderModule(rgenShaderCode);
     VkShaderModule rchitModule = createShaderModule(rchitShaderCode);
     VkShaderModule rmissModule = createShaderModule(rmissShaderCode);
-    VkShaderModule copyModule = createShaderModule(copyToSwapchainCode);
+    //VkShaderModule copyModule = createShaderModule(copyToSwapchainCode);
 
     VkPipelineShaderStageCreateInfo rgenStageInfo{};
     rgenStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1288,7 +1288,7 @@ void Renderer::createPipeline_RT() {
     vkDestroyShaderModule(device, rchitModule, nullptr);
     vkDestroyShaderModule(device, rgenModule, nullptr);
     vkDestroyShaderModule(device, rmissModule, nullptr);
-    vkDestroyShaderModule(device, copyModule, nullptr);
+    //vkDestroyShaderModule(device, copyModule, nullptr);
 }
 
 
@@ -2435,7 +2435,7 @@ void Renderer::createDstImage_RT() {
 
 void Renderer::loadMeshes() {
     Mesh cube = Mesh{};
-    loadMesh("meshes/Dragon_1.obj", cube);
+    loadMesh("meshes/teapot.obj", cube);
     meshes.push_back(cube);
 }
 
