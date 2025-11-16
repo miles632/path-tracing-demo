@@ -8,12 +8,8 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
-#include <glm/glm.hpp>
-#include <glm/vec4.hpp>
-#include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <array>
 #include <vector>
 #include <iostream>
 #include <cstdlib>
@@ -21,27 +17,16 @@
 #include <cstring>
 #include <optional>
 #include <set>
-#include <cstdint>
-#include <algorithm>
-#include <limits>
 #include <fstream>
-#include <queue>
 #include <chrono>
-#include <unordered_map>
 
+#include "blas.h"
+#include "tlas.h"
 #include "vertex.h"
 #include "camera.h"
+#include "arena.h"
+#include "host_device.h"
 #include "globals.h"
-
-//#include "stb_image.h"
-//#include "tiny_obj_loader.h"
-
-/*
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "tiny_obj_loader.h"
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-*/
 
 #include "blas.h"
 #include "tiny_obj_loader.h"
@@ -49,21 +34,6 @@
 #include "tlas.h"
 
 
-/*
-VkResult CreateDebugUtilsMessengerEXT(
-    VkInstance instance,
-    const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-    const VkAllocationCallbacks* pAllocator,
-    VkDebugUtilsMessengerEXT* pDebugMessenger
-    ) {
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-    if (func != nullptr) {
-        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-    } else {
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
-    }
-}
-*/
 VkResult CreateDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -76,19 +46,6 @@ void DestroyDebugUtilsMessengerEXT(
     VkDebugUtilsMessengerEXT debugMessenger,
     const VkAllocationCallbacks* pAllocator
     );
-
-/*
-void DestroyDebugUtilsMessengerEXT(
-    VkInstance instance,
-    VkDebugUtilsMessengerEXT debugMessenger,
-    const VkAllocationCallbacks* pAllocator
-    ) {
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func != nullptr) {
-        func(instance, debugMessenger, pAllocator);
-    }
-}
-*/
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -179,10 +136,12 @@ private:
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> inFlightImages;
 
-    std::vector<Mesh> meshes;
-    std::vector<MeshInfo> meshesInfo;
+    int vertexCount = 0;
+    int indexCount = 0;
 
-    std::vector<glm::uvec2> offsets;
+    Arena vertexArena;
+    Arena indexArena;
+    Arena offsetArena;
 
     // uninitialized for now
     VkImage textureImage;
@@ -352,6 +311,6 @@ private:
     void createAccelerationStructures();
 
     void loadMeshes();
-    static bool loadMesh(const std::string& fpath, Mesh& outputMesh);
+    bool loadMesh(const std::string& fpath);
 };
 

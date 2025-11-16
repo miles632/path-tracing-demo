@@ -50,32 +50,3 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
-
-struct Mesh {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-};
-
-struct MeshInfo {
-    uint32_t vertexOffsetBytes = 0;
-    uint32_t indexOffsetBytes = 0;
-    uint32_t vertexCount = 0;
-    uint32_t indexCount = 0;
-
-    // index for the meshes vector in the application struct
-    uint32_t indexInto;
-};
-
-
-/*
-const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-};
-
-const std::vector<uint16_t> indices = {
-    0, 1, 2, 2, 3, 0
-};
-*/

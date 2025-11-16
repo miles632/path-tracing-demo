@@ -1,9 +1,5 @@
 #include "tlas.h"
-#include "blas.h"
-#include "camera.h"
-#include "vertex.h"
 #include "renderer.h"
-#include "globals.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"

@@ -1,13 +1,5 @@
 #include "renderer.h"
 
-#include <complex>
-
-#include "blas.h"
-#include "tlas.h"
-#include "host_device.h"
-#include "vertex.h"
-
-
 VkResult CreateDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -95,6 +87,118 @@ void Renderer::initVulkan() {
     /*
         createDescriptorPool();
         createDescriptorSets(); */
+}
+void Renderer::createVertexBuffer() {
+    std::byte* vertexData = vertexArena.data;
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(
+        vertexArena.capacity,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory
+    );
+
+    void* stagingData;
+    vkMapMemory(device, stagingBufferMemory, 0, vertexArena.capacity, 0, &stagingData);
+    memcpy(stagingData, vertexData, vertexArena.offset);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(
+        vertexArena.capacity,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        vertexBuffer,
+        vertexBufferMemory
+    );
+
+    copyBuffer(stagingBuffer, vertexBuffer, vertexArena.capacity);
+
+    VkBufferDeviceAddressInfo addrInfo{};
+    addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    addrInfo.buffer = vertexBuffer;
+    vertexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &addrInfo);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+void Renderer::createIndexBuffer() {
+    std::byte* indexData = indexArena.data;
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(
+        vertexArena.capacity,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory
+    );
+
+    void* stagingData;
+    vkMapMemory(device, stagingBufferMemory, 0, indexArena.capacity, 0, &stagingData);
+    memcpy(stagingData, indexData, indexArena.offset);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(
+     indexArena.capacity,
+     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+     indexBuffer,
+     indexBufferMemory
+     );
+
+    copyBuffer(stagingBuffer, indexBuffer, indexArena.capacity);
+
+    VkBufferDeviceAddressInfo bufferAddressInfo{};
+    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferAddressInfo.buffer = indexBuffer;
+    indexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+void Renderer::createOffsetBuffer() {
+    std::byte* offsetData = offsetArena.data;
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(
+        offsetArena.capacity,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory
+    );
+
+    void* stagingData;
+    vkMapMemory(device, stagingBufferMemory, 0, offsetArena.capacity, 0, &stagingData);
+    memcpy(stagingData, offsetData, offsetArena.offset);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(
+     offsetArena.capacity,
+     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+     offsetBuffer,
+     offsetBufferMemory
+     );
+
+    copyBuffer(stagingBuffer, offsetBuffer, offsetArena.capacity);
+
+    VkBufferDeviceAddressInfo bufferAddressInfo{};
+    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferAddressInfo.buffer = offsetBuffer;
+    offsetBufferAddress = pfnGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void Renderer::mainLoop() {
@@ -266,9 +370,6 @@ void Renderer::cleanup() {
 
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
-
-    tlas.destroy(device);
-    blas.destroy(device);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
@@ -796,124 +897,6 @@ void Renderer::createImageViews() {
 }
 
 
-void Renderer::createVertexBuffer() {
-    std::vector<float> vertexData;
-
-    uint32_t currentVertexOffset = 0;
-    meshesInfo.clear();
-
-    for (size_t i = 0; i < meshes.size(); ++i) {
-        auto& mesh = meshes[i];
-
-        // Record mesh info for this mesh
-        MeshInfo mInfo;
-        mInfo.indexInto = i;
-        mInfo.vertexCount = mesh.vertices.size();
-        mInfo.vertexOffsetBytes = currentVertexOffset;
-        meshesInfo.push_back(mInfo);
-
-        for (auto& v : mesh.vertices) {
-            vertexData.push_back(v.pos.x);
-            vertexData.push_back(v.pos.y);
-            vertexData.push_back(v.pos.z);
-
-            vertexData.push_back(v.color.x);
-            vertexData.push_back(v.color.y);
-            vertexData.push_back(v.color.z);
-
-            vertexData.push_back(v.tex.x);
-            vertexData.push_back(v.tex.y);
-
-            vertexData.push_back(v.normal.x);
-            vertexData.push_back(v.normal.y);
-            vertexData.push_back(v.normal.z);
-        }
-
-        currentVertexOffset += sizeof(float) * 11 * mesh.vertices.size(); // 11 floats per vertex
-    }
-
-    //VkDeviceSize bufferSize = vertexData.size() * sizeof(float);
-    VkDeviceSize bufferSize = currentVertexOffset;
-
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory
-    );
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertexData.data(), bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        vertexBuffer,
-        vertexBufferMemory
-    );
-
-    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-
-    VkBufferDeviceAddressInfo addrInfo{};
-    addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    addrInfo.buffer = vertexBuffer;
-    vertexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &addrInfo);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-
-void Renderer::createOffsetBuffer() {
-    for (const auto& meshinfo : meshesInfo) {
-        glm::uvec2 entry;
-        entry.x = meshinfo.vertexOffsetBytes / sizeof(Vertex);
-        entry.y = meshinfo.indexOffsetBytes / sizeof(uint32_t);
-        offsets.push_back(entry);
-    }
-
-    VkDeviceSize bufferSize = (uint64_t)offsets.size();
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory
-        );
-
-    void *data;
-
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(static_cast<char*>(data), offsets.data(), offsets.size());
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        offsetBuffer,
-        offsetBufferMemory
-        );
-
-    copyBuffer(stagingBuffer, offsetBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-
-
 void Renderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -975,58 +958,6 @@ uint32_t Renderer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags pro
         }
     }
     throw std::runtime_error("failed to find suitable memory type");
-}
-
-void Renderer::createIndexBuffer() {
-    //VkDeviceSize bufferSize = sizeof(uint16_t) * indices.size();
-    VkDeviceSize currentOffset = 0;
-
-    for (auto& mInfo : meshesInfo) {
-        const auto& mesh = meshes[mInfo.indexInto];
-        mInfo.indexCount = mesh.indices.size();
-        mInfo.indexOffsetBytes = currentOffset;
-
-        currentOffset += mInfo.indexCount * sizeof(uint32_t);
-    }
-
-    VkDeviceSize bufferSize = currentOffset;
-
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    for (const auto& mInfo : meshesInfo) {
-        const auto& indices = meshes[mInfo.indexInto].indices;
-        memcpy(
-            static_cast<char*>(data) + mInfo.indexOffsetBytes,
-            meshes[mInfo.indexInto].indices.data(),
-            mInfo.indexCount * sizeof(uint32_t)
-            );
-    }
-    //memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        indexBuffer,
-        indexBufferMemory
-        );
-
-    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-
-    VkBufferDeviceAddressInfo bufferAddressInfo{};
-    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    bufferAddressInfo.buffer = indexBuffer;
-    indexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void Renderer::createGraphicsPipeline() {
@@ -1917,11 +1848,8 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmdBuf, uint32_t imageIndex) 
         vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
 
-        //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-        //vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-        for (const MeshInfo& m : meshesInfo) {
-            vkCmdDrawIndexed(cmdBuf, m.indexCount, 1, m.vertexOffsetBytes / sizeof(uint32_t), m.vertexOffsetBytes / sizeof(Vertex), 0);
-        }
+    // commands go here
+
 
         vkCmdEndRenderPass(cmdBuf);
 
@@ -2434,12 +2362,12 @@ void Renderer::createDstImage_RT() {
 
 
 void Renderer::loadMeshes() {
-    Mesh cube = Mesh{};
-    loadMesh("meshes/teapot.obj", cube);
-    meshes.push_back(cube);
+    if (!loadMesh("meshes/teapot.obj")) {
+        throw std::runtime_error("failed loading mesh");
+    }
 }
 
-bool Renderer::loadMesh(const std::string& fpath, Mesh& outputMesh) {
+bool Renderer::loadMesh(const std::string& fpath) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -2448,13 +2376,29 @@ bool Renderer::loadMesh(const std::string& fpath, Mesh& outputMesh) {
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, fpath.c_str());
     if (!ret) return false;
 
-    std::unordered_map<std::string, uint32_t> uniqueVerts;
+    size_t alignedSizeVertex = alignUp(sizeof(Vertex), sizeof(size_t));
+    size_t alignedSizeIndex = alignUp(sizeof(uint32_t), sizeof(size_t));
+    size_t alignedSizeOffset = alignUp(sizeof(glm::uvec2), sizeof(size_t));
 
+    size_t numTriangles = 0;
+    for (const auto& shape : shapes) {
+        numTriangles += shape.mesh.indices.size() / 3;
+    }
+
+    arenaInit(&vertexArena, numTriangles * 3 * alignedSizeVertex);
+    arenaInit(&indexArena, numTriangles * 3 * alignedSizeIndex);
+    arenaInit(&offsetArena, numTriangles * alignedSizeOffset);
+
+    Vertex* vertexData = reinterpret_cast<Vertex*>(vertexArena.data);
+    uint32_t* indexData = reinterpret_cast<uint32_t*>(indexArena.data);
+    glm::uvec2* offsetData = reinterpret_cast<glm::uvec2*>(offsetArena.data);
+
+    size_t vertexOffset = 0;
+    size_t indexOffset = 0;
 
     for (const auto& shape : shapes) {
-
         for (size_t f = 0; f < shape.mesh.indices.size(); f += 3) {
-            // Get vertex positions
+
             glm::vec3 pos0 = {
                 attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 0],
                 attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 1],
@@ -2471,10 +2415,9 @@ bool Renderer::loadMesh(const std::string& fpath, Mesh& outputMesh) {
                 attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 2]
             };
 
-            // Compute face normal
+            // TODO: add functionality to read normals from the obj file if they are present
             glm::vec3 faceNormal = glm::normalize(glm::cross(pos1 - pos0, pos2 - pos0));
 
-            // UVs
             glm::vec2 uv0{0.0f, 0.0f}, uv1{0.0f, 0.0f}, uv2{0.0f, 0.0f};
             if (shape.mesh.indices[f + 0].texcoord_index >= 0)
                 uv0 = { attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 0],
@@ -2486,21 +2429,28 @@ bool Renderer::loadMesh(const std::string& fpath, Mesh& outputMesh) {
                 uv2 = { attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 0],
                         1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 1] };
 
-            // Push vertices — duplicate per face
-            uint32_t i0 = outputMesh.vertices.size();
-            uint32_t i1 = i0 + 1;
-            uint32_t i2 = i0 + 2;
+            vertexData[vertexOffset + 0] = Vertex{.pos = pos0, .color = glm::vec3(1.0f), .tex = uv0, .normal = faceNormal};
+            vertexData[vertexOffset + 1] = Vertex{.pos = pos1, .color = glm::vec3(1.0f), .tex = uv1, .normal = faceNormal};
+            vertexData[vertexOffset + 2] = Vertex{.pos = pos2, .color = glm::vec3(1.0f), .tex = uv2, .normal = faceNormal};
 
+            indexData[indexOffset + 0] = vertexOffset + 0;
+            indexData[indexOffset + 1] = vertexOffset + 1;
+            indexData[indexOffset + 2] = vertexOffset + 2;
 
-            outputMesh.vertices.push_back(Vertex{.pos = pos0, .color = glm::vec3(1.0f), .tex = uv0, .normal = faceNormal});
-            outputMesh.vertices.push_back(Vertex{.pos = pos1, .color = glm::vec3(1.0f), .tex = uv1, .normal = faceNormal});
-            outputMesh.vertices.push_back(Vertex{.pos = pos2, .color = glm::vec3(1.0f), .tex = uv2, .normal = faceNormal});
+            *offsetData = glm::uvec2 { indexOffset, vertexOffset};
+            offsetData +=1;
 
-            outputMesh.indices.push_back(i0);
-            outputMesh.indices.push_back(i1);
-            outputMesh.indices.push_back(i2);
+            vertexOffset +=3;
+            indexOffset +=3;
         }
     }
+
+    vertexArena.offset = vertexOffset * alignedSizeVertex;
+    indexArena.offset = indexOffset * alignedSizeIndex;
+    offsetArena.offset = numTriangles * alignedSizeOffset;
+
+    vertexCount = vertexArena.offset / alignedSizeVertex;
+    indexCount = indexArena.offset / alignedSizeIndex;
 
     return true;
 }
@@ -2509,8 +2459,10 @@ void Renderer::createAccelerationStructures() {
     BlasInput input{};
     input.vertexAddress = vertexBufferAddress;
     input.indexAddress = indexBufferAddress;
-    input.vertexCount = meshesInfo[0].vertexCount;
-    input.indexCount = meshesInfo[0].indexCount;
+    //input.vertexCount = meshesInfo[0].vertexCount;
+    //input.indexCount = meshesInfo[0].indexCount;
+    input.vertexCount = vertexCount;
+    input.indexCount = indexCount;
     input.vertexFormat = VERTEX_FORMAT;
 
     blas.create(device, input, *this);
