@@ -2,7 +2,6 @@
 
 #include <stdexcept>
 
-// this aligns to a multiple of 8
 size_t alignUp(size_t n, size_t alignment) {
     return (n + alignment - 1) & ~(alignment - 1);
 }
