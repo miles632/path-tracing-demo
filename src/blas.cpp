@@ -70,13 +70,13 @@ void Blas::create(VkDevice device,
     buildInfo.dstAccelerationStructure = handle;
 
     VkBuffer scratchBuffer;
-    VkDeviceMemory scratchMemory;
+    VkDeviceMemory scratchBufferMemory;
     state.createBuffer(
         buildSizes.buildScratchSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         scratchBuffer,
-        scratchMemory
+       scratchBufferMemory
     );
 
     VkBufferDeviceAddressInfoKHR scratchAddrInfo{};
@@ -97,6 +97,9 @@ void Blas::create(VkDevice device,
     VkCommandBuffer cmdBuf_ = state.beginSingleTimeCommands();
     pfnCmdBuildAccelerationStructuresKHR(cmdBuf_, 1, &buildInfo, pRangeInfos);
     state.endSingleTimeCommands(cmdBuf_);
+
+    vkDestroyBuffer(device, scratchBuffer, nullptr);
+    vkFreeMemory(device, scratchBufferMemory, nullptr);
 }
 
 void Blas::destroy(VkDevice device) {

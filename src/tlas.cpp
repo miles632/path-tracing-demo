@@ -139,6 +139,9 @@ void Tlas::create(VkDevice device,
         pBuildRangeInfos
         );
     state.endSingleTimeCommands(cmdBuf);
+
+    vkDestroyBuffer(device, scratchBuffer, nullptr);
+    vkFreeMemory(device, scratchBufferMemory, nullptr);
 }
 
 void Tlas::destroy(VkDevice device) {

@@ -333,62 +333,152 @@ void Renderer::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 
 
 void Renderer::cleanup() {
-    cleanupSwapChain();
+    vkDeviceWaitIdle(device);
 
-    vkDestroyPipeline(device, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    vkDestroyRenderPass(device, renderPass, nullptr);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    if (sbtBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, sbtBuffer, nullptr);
+        sbtBuffer = VK_NULL_HANDLE;
+    }
+    if (sbtBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, sbtBufferMemory, nullptr);
+        sbtBufferMemory = VK_NULL_HANDLE;
     }
 
-    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-
-    vkDestroySampler(device, textureSampler, nullptr);
-    vkDestroyImageView(device, textureImageView, nullptr);
-
-    vkDestroyImage(device, textureImage, nullptr);
-    vkFreeMemory(device, textureImageMemory, nullptr);
-
-    vkDestroyImageView(device, depthImageView, nullptr);
-    vkDestroyImage(device, depthImage, nullptr);
-    vkFreeMemory(device, depthImageMemory, nullptr);
-
-    vkDestroyImageView(device, colorImageView, nullptr);
-    vkDestroyImage(device, colorImage, nullptr);
-    vkFreeMemory(device, colorImageMemory, nullptr);
-
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-
-    vkDestroyBuffer(device, sbtBuffer, nullptr);
-    vkFreeMemory(device, sbtBufferMemory, nullptr);
-
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
-
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
+    if (offsetBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, offsetBuffer, nullptr);
+        offsetBuffer = VK_NULL_HANDLE;
     }
 
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    vkDestroyDevice(device, nullptr);
-
-    if (enableValidationLayers) {
-        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+    if (offsetBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, offsetBufferMemory, nullptr);
+        offsetBufferMemory = VK_NULL_HANDLE;
     }
 
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-    vkDestroyInstance(instance, nullptr);
+    if (indexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        indexBuffer = VK_NULL_HANDLE;
+    }
+    if (indexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, indexBufferMemory, nullptr);
+        indexBufferMemory = VK_NULL_HANDLE;
+    }
 
-    vkDestroyDevice(device, nullptr);
+    if (vertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vertexBuffer = VK_NULL_HANDLE;
+    }
+    if (vertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+        vertexBufferMemory = VK_NULL_HANDLE;
+    }
+
+    for (size_t i = 0; i < uniformBuffers.size(); ++i) {
+        if (uniformBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+            uniformBuffers[i] = VK_NULL_HANDLE;
+        }
+        if (uniformBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+            uniformBuffersMemory[i] = VK_NULL_HANDLE;
+        }
+    }
+
+    blas.destroy(device);
+    tlas.destroy(device);
+
+    free(indexArena.data);
+    free(offsetArena.data);
+    free(vertexArena.data);
+
+    if (descriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        descriptorPool = VK_NULL_HANDLE;
+    }
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+        descriptorSetLayout = VK_NULL_HANDLE;
+    }
+
+    if (graphicsPipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        graphicsPipeline = VK_NULL_HANDLE;
+    }
+    if (pipelineLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        pipelineLayout = VK_NULL_HANDLE;
+    }
+
+
+    for (auto fb : swapChainFramebuffers) {
+        if (fb != VK_NULL_HANDLE) vkDestroyFramebuffer(device, fb, nullptr);
+    }
+    swapChainFramebuffers.clear();
+
+    for (auto iv : swapChainImageViews) {
+        if (iv != VK_NULL_HANDLE) vkDestroyImageView(device, iv, nullptr);
+    }
+    swapChainImageViews.clear();
+
+    if (swapChain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+        swapChain = VK_NULL_HANDLE;
+    }
+
+    if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(device, commandPool,
+                             static_cast<uint32_t>(commandBuffers.size()),
+                             commandBuffers.data());
+        commandBuffers.clear();
+    }
+    if (commandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, commandPool, nullptr);
+        commandPool = VK_NULL_HANDLE;
+    }
+
+    for (auto s : imageAvailableSemaphores) {
+        if (s != VK_NULL_HANDLE) vkDestroySemaphore(device, s, nullptr);
+    }
+    imageAvailableSemaphores.clear();
+
+    for (auto s : renderFinishedSemaphores) {
+        if (s != VK_NULL_HANDLE) vkDestroySemaphore(device, s, nullptr);
+    }
+    renderFinishedSemaphores.clear();
+
+    for (auto f : inFlightFences) {
+        if (f != VK_NULL_HANDLE) vkDestroyFence(device, f, nullptr);
+    }
+
+    inFlightFences.clear();
+
+    if (storageImageView_RT != VK_NULL_HANDLE) { vkDestroyImageView(device, storageImageView_RT, nullptr); storageImageView_RT = VK_NULL_HANDLE; }
+    if (storageImage_RT != VK_NULL_HANDLE) { vkDestroyImage(device, storageImage_RT, nullptr); storageImage_RT = VK_NULL_HANDLE; }
+    if (storageImageMemory_RT != VK_NULL_HANDLE) { vkFreeMemory(device, storageImageMemory_RT, nullptr); storageImageMemory_RT = VK_NULL_HANDLE; }
+
+    if (dstImageView_RT != VK_NULL_HANDLE) { vkDestroyImageView(device, dstImageView_RT, nullptr); dstImageView_RT = VK_NULL_HANDLE; }
+    if (dstImage_RT != VK_NULL_HANDLE) { vkDestroyImage(device, dstImage_RT, nullptr); dstImage_RT = VK_NULL_HANDLE; }
+    if (dstImageMemory_RT != VK_NULL_HANDLE) { vkFreeMemory(device, dstImageMemory_RT, nullptr); dstImageMemory_RT = VK_NULL_HANDLE; }
+
+    std::cout << "CHECK 4" << std::endl;
+    if (device != VK_NULL_HANDLE) {
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
+    }
+
+    if (surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+        surface = VK_NULL_HANDLE;
+    }
+
+    if (instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(instance, nullptr);
+        instance = VK_NULL_HANDLE;
+    }
+
+    if (window) {
+        glfwDestroyWindow(window);
+        window = nullptr;
+    }
 
     glfwTerminate();
 }
@@ -1966,7 +2056,6 @@ void Renderer::createSyncObjects() {
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS
-            || vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS
             || vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS
         ) {
             throw std::runtime_error("failed creating sync objects (frame)");
