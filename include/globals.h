@@ -21,3 +21,6 @@ extern PFN_vkCreateRayTracingPipelinesKHR pfnCreateRayTracingPipelinesKHR;
 extern PFN_vkCmdTraceRaysKHR pfnCmdTraceRaysKHR;
 
 extern const VkFormat VERTEX_FORMAT;
+
+inline constexpr int MAX_MESHES = 1;
+typedef uint32_t INDEX_TYPE;

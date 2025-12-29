@@ -69,7 +69,8 @@ void Renderer::initVulkan() {
         createOffsetBuffer();
         createUniformBuffers();
 
-        createAccelerationStructures();
+        createBottomLevelAccelerationStructures();
+        createTopLevelAccelerationStructure();
 
         createDescriptorSetLayout_RT();
         createPipeline_RT();
@@ -383,7 +384,9 @@ void Renderer::cleanup() {
         }
     }
 
-    blas.destroy(device);
+    for (auto& blasInstance: blasPool) {
+        blasInstance.destroy(device);
+    }
     tlas.destroy(device);
 
     free(indexArena.data);
@@ -459,7 +462,6 @@ void Renderer::cleanup() {
     if (dstImage_RT != VK_NULL_HANDLE) { vkDestroyImage(device, dstImage_RT, nullptr); dstImage_RT = VK_NULL_HANDLE; }
     if (dstImageMemory_RT != VK_NULL_HANDLE) { vkFreeMemory(device, dstImageMemory_RT, nullptr); dstImageMemory_RT = VK_NULL_HANDLE; }
 
-    std::cout << "CHECK 4" << std::endl;
     if (device != VK_NULL_HANDLE) {
         vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
@@ -1605,7 +1607,7 @@ void Renderer::createDescriptorSetLayout_RT() {
        second for output image and the ubo*/
     std::vector<VkDescriptorSetLayoutBinding> bindings = {
     { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR},
-    { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR },
+    { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR }, // accumulation image
         {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR }, // dst image that gets copied into swapchain
         { 3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
         // will only use closest hit right now
@@ -2449,133 +2451,151 @@ void Renderer::createDstImage_RT() {
 }
 
 
-
 void Renderer::loadMeshes() {
-    if (!loadMesh("meshes/teapot.obj")) {
-        throw std::runtime_error("failed loading mesh");
-    }
-}
+    std::array<std::string, MAX_MESHES> meshPaths = {"teapot.obj"};
 
-bool Renderer::loadMesh(const std::string& fpath) {
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
+    std::vector<glm::uvec2> meshOffsets;
 
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, fpath.c_str());
-    if (!ret) return false;
-
-    size_t alignedSizeVertex = alignUp(sizeof(Vertex), sizeof(size_t));
-    size_t alignedSizeIndex = alignUp(sizeof(uint32_t), sizeof(size_t));
-    size_t alignedSizeOffset = alignUp(sizeof(glm::uvec2), sizeof(size_t));
-
-    size_t numTriangles = 0;
-    for (const auto& shape : shapes) {
-        numTriangles += shape.mesh.indices.size() / 3;
-    }
-
-    arenaInit(&vertexArena, numTriangles * 3 * alignedSizeVertex);
-    arenaInit(&indexArena, numTriangles * 3 * alignedSizeIndex);
-    arenaInit(&offsetArena, numTriangles * alignedSizeOffset);
-
-    Vertex* vertexData = reinterpret_cast<Vertex*>(vertexArena.data);
-    uint32_t* indexData = reinterpret_cast<uint32_t*>(indexArena.data);
-    glm::uvec2* offsetData = reinterpret_cast<glm::uvec2*>(offsetArena.data);
+    arenaInit(&vertexArena, 500000); // 0.5kb preallocated for every mesh
+    arenaInit(&indexArena, 500000);
+    arenaInit(&offsetArena, 50);
 
     size_t vertexOffset = 0;
     size_t indexOffset = 0;
 
-    for (const auto& shape : shapes) {
-        for (size_t f = 0; f < shape.mesh.indices.size(); f += 3) {
+    for (int i = 0; i < meshPaths.size(); i++) {
+        std::string path = "meshes/" + meshPaths[i];
 
-            glm::vec3 pos0 = {
-                attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 0],
-                attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 1],
-                attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 2]
-            };
-            glm::vec3 pos1 = {
-                attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 0],
-                attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 1],
-                attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 2]
-            };
-            glm::vec3 pos2 = {
-                attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 0],
-                attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 1],
-                attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 2]
-            };
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
 
-            // TODO: add functionality to read normals from the obj file if they are present
-            glm::vec3 faceNormal = glm::normalize(glm::cross(pos1 - pos0, pos2 - pos0));
+        bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.c_str());
+        if (!ret) throw std::runtime_error("failed loading mesh");
 
-            glm::vec2 uv0{0.0f, 0.0f}, uv1{0.0f, 0.0f}, uv2{0.0f, 0.0f};
-            if (shape.mesh.indices[f + 0].texcoord_index >= 0)
-                uv0 = { attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 1] };
-            if (shape.mesh.indices[f + 1].texcoord_index >= 0)
-                uv1 = { attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 1] };
-            if (shape.mesh.indices[f + 2].texcoord_index >= 0)
-                uv2 = { attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 1] };
-
-            vertexData[vertexOffset + 0] = Vertex{.pos = pos0, .color = glm::vec3(1.0f), .tex = uv0, .normal = faceNormal};
-            vertexData[vertexOffset + 1] = Vertex{.pos = pos1, .color = glm::vec3(1.0f), .tex = uv1, .normal = faceNormal};
-            vertexData[vertexOffset + 2] = Vertex{.pos = pos2, .color = glm::vec3(1.0f), .tex = uv2, .normal = faceNormal};
-
-            indexData[indexOffset + 0] = vertexOffset + 0;
-            indexData[indexOffset + 1] = vertexOffset + 1;
-            indexData[indexOffset + 2] = vertexOffset + 2;
-
-            *offsetData = glm::uvec2 { indexOffset, vertexOffset};
-            offsetData +=1;
-
-            vertexOffset +=3;
-            indexOffset +=3;
+        size_t indexCount = 0;
+        for (const auto& shape : shapes) {
+            indexCount += shape.mesh.indices.size();
         }
+
+        size_t vertexCount = indexCount;
+
+        vertexCounts.push_back(vertexCount);
+        indexCounts.push_back(indexCount);
+
+        auto* vertexData = arenaAlloc(&vertexArena, vertexCount * sizeof(Vertex));
+        auto* indexData = arenaAlloc(&indexArena, indexCount * sizeof(INDEX_TYPE));
+
+        auto* vertexDst = reinterpret_cast<Vertex*>(vertexData);
+        auto* indexDst = reinterpret_cast<INDEX_TYPE*>(indexData);
+
+        auto* offsetData = arenaAlloc(&offsetArena, sizeof(glm::uvec2));
+        auto* arenaDst = reinterpret_cast<glm::uvec2*>(offsetData);
+        *arenaDst = glm::uvec2(vertexOffset, indexOffset);
+
+        BlasInput currentInstanceInput{};
+
+        // addresses stay uninitialized until vert and idx buffers are created
+        currentInstanceInput.vertexCount = vertexCount;
+        currentInstanceInput.indexCount = indexCount;
+        currentInstanceInput.vertexOffset = vertexOffset;
+        currentInstanceInput.indexOffset = indexOffset;
+        currentInstanceInput.vertexFormat = VERTEX_FORMAT;
+        blasData.push_back(currentInstanceInput);
+
+        size_t localVertexOffset = 0;
+        size_t localIndexOffset = 0;
+
+        for (const auto& shape : shapes) {
+            for (size_t f = 0; f < shape.mesh.indices.size(); f+=3) {
+
+                glm::vec3 pos0 = {
+                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 0],
+                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 1],
+                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 2]
+                };
+                glm::vec3 pos1 = {
+                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 0],
+                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 1],
+                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 2]
+                };
+                glm::vec3 pos2 = {
+                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 0],
+                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 1],
+                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 2]
+                };
+
+                // TODO: add functionality to read normals from the obj file if they are present
+                glm::vec3 faceNormal = glm::normalize(glm::cross(pos1 - pos0, pos2 - pos0));
+
+                /*
+                glm::vec2 uv0{0.0f, 0.0f}, uv1{0.0f, 0.0f}, uv2{0.0f, 0.0f};
+                if (shape.mesh.indices[f + 0].texcoord_index >= 0)
+                    uv0 = { attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 0],
+                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 1] };
+                if (shape.mesh.indices[f + 1].texcoord_index >= 0)
+                    uv1 = { attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 0],
+                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 1] };
+                if (shape.mesh.indices[f + 2].texcoord_index >= 0)
+                    uv2 = { attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 0],
+                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 1] };
+                            */
+
+                // no textures for now
+                auto texzero = glm::uvec2(0,0);
+                vertexDst[localVertexOffset + 0] = Vertex{.pos = pos0, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
+                vertexDst[localVertexOffset + 1] = Vertex{.pos = pos1, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
+                vertexDst[localVertexOffset + 2] = Vertex{.pos = pos2, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
+
+                indexDst[localIndexOffset + 0] = localVertexOffset + 0;
+                indexDst[localIndexOffset + 1] = localVertexOffset + 1;
+                indexDst[localIndexOffset + 2] = localVertexOffset + 2;
+
+                localVertexOffset += 3;
+                localIndexOffset += 3;
+            }
+        }
+        vertexOffset += localVertexOffset;
+        indexOffset += localIndexOffset;
+    }
+}
+
+void Renderer::createBottomLevelAccelerationStructures() {
+    for (auto& blasInput : blasData) {
+        blasInput.vertexAddress = vertexBufferAddress + sizeof(Vertex) * blasInput.vertexOffset;
+        blasInput.indexAddress = indexBufferAddress + sizeof(INDEX_TYPE) * blasInput.indexOffset;
+
+        Blas blasInstance {};
+        blasInstance.create(device, blasInput, *this);
+        assert(blasInstance.handle != VK_NULL_HANDLE);
+        blasPool.push_back(blasInstance);
+    }
+}
+
+void Renderer::createTopLevelAccelerationStructure() {
+    std::vector<TlasInstance> instances;
+    for (const auto& blasInstance : blasPool) {
+        TlasInstance instance{};
+        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        VkTransformMatrixKHR transform{};
+        glm::mat4 mat = glm::mat4(1.0f);
+
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 4; ++j)
+                transform.matrix[i][j] = mat[i][j];
+
+        instance.transform = transform;
+        VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
+        blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        blasAddressInfo.accelerationStructure = blasInstance.handle;
+        instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
+        instance.instanceCustomIndex = 0;
+        instance.mask = 0xFF;
+        instance.instanceShaderBindingTableRecordOffset = 0;
+
+        instances.push_back(instance);
     }
 
-    vertexArena.offset = vertexOffset * alignedSizeVertex;
-    indexArena.offset = indexOffset * alignedSizeIndex;
-    offsetArena.offset = numTriangles * alignedSizeOffset;
-
-    vertexCount = vertexArena.offset / alignedSizeVertex;
-    indexCount = indexArena.offset / alignedSizeIndex;
-
-    return true;
-}
-
-void Renderer::createAccelerationStructures() {
-    BlasInput input{};
-    input.vertexAddress = vertexBufferAddress;
-    input.indexAddress = indexBufferAddress;
-    //input.vertexCount = meshesInfo[0].vertexCount;
-    //input.indexCount = meshesInfo[0].indexCount;
-    input.vertexCount = vertexCount;
-    input.indexCount = indexCount;
-    input.vertexFormat = VERTEX_FORMAT;
-
-    blas.create(device, input, *this);
-
-    TlasInstance instance{};
-    instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    VkTransformMatrixKHR transform{};
-    glm::mat4 mat = glm::mat4(1.0f);
-
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 4; ++j)
-            transform.matrix[i][j] = mat[i][j];
-
-    instance.transform = transform;
-    VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
-    blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-    blasAddressInfo.accelerationStructure = blas.handle;
-    instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
-    instance.instanceCustomIndex = 0;
-    instance.mask = 0xFF;
-    instance.instanceShaderBindingTableRecordOffset = 0;
-
-    std::vector<TlasInstance> instances = { instance };
     tlas.create(device, instances, *this);
 }
-
-

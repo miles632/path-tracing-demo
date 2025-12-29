@@ -8,11 +8,16 @@ struct Renderer; //forward declaration
 
 struct BlasInput {
     VkDeviceAddress vertexAddress;
-    const uint32_t vertexStride = sizeof(Vertex);
-    uint32_t vertexCount;
     VkDeviceAddress indexAddress;
+
+    uint32_t vertexCount;
     uint32_t indexCount;
+
+    size_t vertexOffset;
+    size_t indexOffset;
+
     VkFormat vertexFormat;
+    const uint32_t vertexStride = sizeof(Vertex);
 };
 
 class Blas {

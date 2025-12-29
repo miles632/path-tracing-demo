@@ -19,6 +19,7 @@
 #include <set>
 #include <fstream>
 #include <chrono>
+#include <tuple>
 
 #include "blas.h"
 #include "tlas.h"
@@ -66,7 +67,7 @@ struct SwapChainSupportDetails {
 typedef enum RenderingMode {
     RENDERING_MODE_RAY_TRACING = 1,
     RENDERING_MODE_RASTERISATION, // TODO: in the future
-    RENDERING_MODE_WIREFRAME, // in the future
+    RENDERING_MODE_WIREFRAME,
 } RenderingMode;
 
 class Renderer {
@@ -136,12 +137,18 @@ private:
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> inFlightImages;
 
-    int vertexCount = 0;
-    int indexCount = 0;
+
+    std::vector<size_t> vertexCounts;
+    std::vector<size_t> indexCounts;
 
     Arena vertexArena;
     Arena indexArena;
     Arena offsetArena;
+
+    std::vector<BlasInput> blasData;
+    std::vector<Blas> blasPool;
+
+    Tlas tlas;
 
     // uninitialized for now
     VkImage textureImage;
@@ -169,9 +176,6 @@ private:
 
     float lastFrameT = 0.0f;
     uint frameCount = 0;
-
-    Tlas tlas;
-    Blas blas;
 
     VkImageView storageImageView_RT;
     VkDeviceMemory storageImageMemory_RT;
@@ -309,8 +313,11 @@ private:
     void createDstImage_RT();
 
     void createAccelerationStructures();
+    void createBottomLevelAccelerationStructures();
+    void createTopLevelAccelerationStructure();
 
     void loadMeshes();
-    bool loadMesh(const std::string& fpath);
+    bool writeMeshData(const std::string& fpath, std::byte* vertexData, std::byte* indexData);
+    glm::uvec2 fetchMeshMetadata(const std::string& fpath);
 };
 
