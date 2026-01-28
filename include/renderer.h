@@ -64,6 +64,12 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct textureData {
+    VkImage image;
+    VkImageView view;
+    VkDeviceMemory memory;
+};
+
 typedef enum RenderingMode {
     RENDERING_MODE_RAY_TRACING = 1,
     RENDERING_MODE_RASTERISATION, // TODO: in the future
@@ -150,21 +156,8 @@ private:
 
     Tlas tlas;
 
-    // uninitialized for now
-    VkImage textureImage;
-    VkDeviceMemory textureImageMemory;
-    VkImageView textureImageView;
+    std::vector<textureData> textures;
     VkSampler textureSampler;
-
-    // uninitialized for ray tracing
-    VkImage depthImage;
-    VkDeviceMemory depthImageMemory;
-    VkImageView depthImageView;
-
-    // uninitialized for now
-    VkImage colorImage;
-    VkDeviceMemory colorImageMemory;
-    VkImageView colorImageView;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -281,9 +274,10 @@ private:
 
     void createSyncObjects();
 
-    void createTextureImage();
+    void createTextureImage(std::string& fpath);
+    void createTextureImages();
     void createTextureSampler();
-    void createTextureImageView();
+    void createTextureImageView(size_t index);
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
     void createImage(
@@ -312,12 +306,10 @@ private:
     void createStorageImage_RT();
     void createDstImage_RT();
 
-    void createAccelerationStructures();
     void createBottomLevelAccelerationStructures();
-    void createTopLevelAccelerationStructure();
+    void createTopLevelAccelerationStructure(const std::vector<glm::vec3>& positions);
+    VkTransformMatrixKHR createTopLevelTransformMatrix(glm::vec3 pos);
 
     void loadMeshes();
-    bool writeMeshData(const std::string& fpath, std::byte* vertexData, std::byte* indexData);
-    glm::uvec2 fetchMeshMetadata(const std::string& fpath);
 };
 

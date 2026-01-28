@@ -8,7 +8,7 @@ size_t alignUp(size_t n, size_t alignment) {
 }
 
 void arenaInit(struct Arena *arena, size_t size) {
-    arena->alignment = 16;
+    arena->alignment = 1;
 
     void* memory = aligned_alloc(arena->alignment, alignUp(size, arena->alignment));
     if (!memory) throw std::runtime_error("malloc failed allocating for arena");

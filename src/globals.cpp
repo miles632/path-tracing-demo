@@ -21,6 +21,9 @@ const std::vector<const char*> deviceExtensions = {
     VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
 };
 
+std::array<std::string, NUM_MESHES> meshPaths = {"teapot.obj", "sphere.obj", "sphere.obj"};
+std::array<std::string, NUM_TEXTURES> texturePaths = {};
+
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else

@@ -36,7 +36,7 @@ void Renderer::initWindow() {
 
         glfwSetKeyCallback(window, &keyInputCallback);
         glfwSetCursorPosCallback(window, &mouseInputCallback);
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
@@ -49,14 +49,6 @@ void Renderer::initVulkan() {
         createLogicalDevice();
         createSwapChain();
         createImageViews();
-        //createRenderPass();
-        //createDescriptorSetLayout();
-        //createGraphicsPipeline();
-        //createDescriptorSetLayout_RT(); //createPipeline_RT();
-        //createColorResources();
-        //createDepthResources();
-        //createFrameBuffers();
-
 
         createCommandPool();
         createStorageImage_RT();
@@ -70,7 +62,15 @@ void Renderer::initVulkan() {
         createUniformBuffers();
 
         createBottomLevelAccelerationStructures();
-        createTopLevelAccelerationStructure();
+        std::vector<glm::vec3> positions = {
+            glm::vec3(1.0f ,1.0f,1.0f),
+            glm::vec3(2.0f ,2.0f,2.0f),
+            glm::vec3(3.0f ,3.0f,3.0f),
+        };
+        createTopLevelAccelerationStructure(positions);
+
+        createTextureImages();
+        createTextureSampler();
 
         createDescriptorSetLayout_RT();
         createPipeline_RT();
@@ -80,14 +80,6 @@ void Renderer::initVulkan() {
         createCommandBuffers();
         createShaderBindingTable();
         createSyncObjects();
-    /*
-        createTextureImage();
-        createTextureImageView();
-        createTextureSampler();
-        */
-    /*
-        createDescriptorPool();
-        createDescriptorSets(); */
 }
 void Renderer::createVertexBuffer() {
     std::byte* vertexData = vertexArena.data;
@@ -1314,33 +1306,6 @@ void Renderer::createPipeline_RT() {
     //vkDestroyShaderModule(device, copyModule, nullptr);
 }
 
-
-void Renderer::createDescriptorSetLayout() {
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-
-    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-    samplerLayoutBinding.binding = 1;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.pBindings = bindings.data();
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-
-    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed creating descriptor set layout");
-    }
-}
-
 void Renderer::createUniformBuffers() {
     VkDeviceSize bufSize = sizeof(UniformBufferObject);
 
@@ -1379,80 +1344,6 @@ void Renderer::createCamera() {
     this->camera = Camera{};
 }
 
-void Renderer::createDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 2> poolSizes;
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed creating descriptor pool") ;
-    }
-}
-
-void Renderer::createDescriptorSets() {
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    allocInfo.pSetLayouts = layouts.data();
-
-    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed allocating descriptor sets");
-    }
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i];
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(UniformBufferObject);
-
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = textureImageView;
-        imageInfo.sampler = textureSampler;
-
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites;
-
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = descriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &bufferInfo;
-        descriptorWrites[0].pImageInfo = nullptr;
-        descriptorWrites[0].pTexelBufferView = nullptr;
-        descriptorWrites[0].pNext = nullptr;
-
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = descriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pImageInfo = &imageInfo;
-        descriptorWrites[1].pNext = nullptr;
-
-        vkUpdateDescriptorSets(
-            device,
-            static_cast<uint32_t>(descriptorWrites.size()),
-            descriptorWrites.data(),
-            0,
-            nullptr
-            );
-    }
-}
-
 void Renderer::createDescriptorSet_RT() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
 
@@ -1461,6 +1352,18 @@ void Renderer::createDescriptorSet_RT() {
     allocInfo.descriptorPool = descriptorPool;
     allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     allocInfo.pSetLayouts = layouts.data();
+
+    std::vector<VkDescriptorImageInfo> textureImgInfos;
+    textureImgInfos.reserve(textures.size());
+
+    for (const auto& texture : textures) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = texture.view;
+        imageInfo.sampler = textureSampler;
+
+        textureImgInfos.push_back(imageInfo);
+    }
 
     descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -1479,11 +1382,6 @@ void Renderer::createDescriptorSet_RT() {
         accelStruct.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
         accelStruct.accelerationStructureCount = 1;
         accelStruct.pAccelerationStructures = &tlas.handle;
-
-        VkDescriptorImageInfo textureImageInfo{};
-        textureImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        textureImageInfo.imageView = textureImageView;
-        textureImageInfo.sampler = textureSampler;
 
         VkDescriptorImageInfo storageImageInfo{};
         storageImageInfo.imageView = storageImageView_RT;
@@ -1580,8 +1478,19 @@ void Renderer::createDescriptorSet_RT() {
         writeStorageHitOffsets.pBufferInfo = &storageBufInfoOffset;
         writeStorageHitOffsets.pNext = nullptr;
 
+        VkWriteDescriptorSet writeTextures;
+        writeTextures.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeTextures.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writeTextures.dstSet = descriptorSets[i];
+        writeTextures.dstBinding = 7;
+        writeTextures.descriptorCount = static_cast<uint32_t>(textureImgInfos.size());
+        writeTextures.dstArrayElement = 0;
+        writeTextures.pImageInfo = textureImgInfos.data();
+        writeTextures.pNext = nullptr;
+
+
         // TODO: add sampling
-        std::array<VkWriteDescriptorSet, 7> descriptorWrites;
+        std::array<VkWriteDescriptorSet, 8> descriptorWrites;
 
         descriptorWrites[0] = writeAccelStr;
         descriptorWrites[1] = writeStorageImage;
@@ -1590,6 +1499,7 @@ void Renderer::createDescriptorSet_RT() {
         descriptorWrites[4] = writeStorageHitVertex;
         descriptorWrites[5] = writeStorageHitIndex;
         descriptorWrites[6] = writeStorageHitOffsets;
+        descriptorWrites[7] = writeTextures;
 
         vkUpdateDescriptorSets(
             device,
@@ -1842,9 +1752,11 @@ void Renderer::createFrameBuffers() {
     swapChainFramebuffers.resize(swapChainImageViews.size());
 
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        std::array<VkImageView, 3> attachments = {
+        std::array<VkImageView, 1> attachments = {
+            /*
             colorImageView,
             depthImageView,
+            */
             swapChainImageViews[i],
         };
 
@@ -2076,17 +1988,27 @@ void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int heig
     app->framebufferResized = true;
 }
 
-void Renderer::createTextureImage() {
+void Renderer::createTextureImages() {
+    for (std::string &path : texturePaths) {
+        createTextureImage(path);
+        createTextureImageView(textures.size()-1);
+    }
+}
+
+void Renderer::createTextureImage(std::string& fpath) {
     int texW, texH, texChannels;
-    stbi_uc *pixels = stbi_load("textures/viking_room.png", &texW, &texH, &texChannels, STBI_rgb_alpha);
+    std::string fullPath = "textures/" + fpath;
+    stbi_uc *pixels = stbi_load(fullPath.c_str(), &texW, &texH, &texChannels, STBI_rgb_alpha);
     VkDeviceSize imageSize = texW * texH * 4;
+
+    textureData textureData;
 
     if (pixels == nullptr) {
         throw std::runtime_error("failed to load texture image");
     }
 
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VkBuffer stagingBuffer{};
+    VkDeviceMemory stagingBufferMemory{};
 
     createBuffer(
         imageSize,
@@ -2111,17 +2033,18 @@ void Renderer::createTextureImage() {
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        textureImage,
-        textureImageMemory
+        textureData.image,
+        textureData.memory
         );
 
-
-    transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texW), static_cast<uint32_t>(texH));
-    transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transitionImageLayout(textureData.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(stagingBuffer, textureData.image, static_cast<uint32_t>(texW), static_cast<uint32_t>(texH));
+    transitionImageLayout(textureData.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);;
+
+    textures.emplace_back(textureData);
 }
 
 void Renderer::createTextureSampler() {
@@ -2149,18 +2072,8 @@ void Renderer::createTextureSampler() {
     }
 }
 
-void Renderer::createTextureImageView() {
-    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-}
-
-void Renderer::createDepthResources() {
-    VkFormat depthFormat = findDepthFormat();
-
-    createImage(swapChainExtent.width, swapChainExtent.height, msaaSamples, depthFormat,
-        VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        depthImage, depthImageMemory);
-
-    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+void Renderer::createTextureImageView(size_t index) {
+    textures[index].view = createImageView(textures[index].image, VK_FORMAT_R8G8B8A8_SRGB);
 }
 
 VkImageView Renderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
@@ -2415,17 +2328,6 @@ VkSampleCountFlagBits Renderer::getMaxUsableSampleCount() {
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-void Renderer::createColorResources() {
-    VkFormat colorFormat = swapChainImageFormat;
-
-    createImage(swapChainExtent.width, swapChainExtent.height,
-        msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        colorImage, colorImageMemory);
-
-    colorImageView = createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
-}
-
 void Renderer::createStorageImage_RT() {
     createImage(swapChainExtent.width, swapChainExtent.height,
         VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL,
@@ -2450,11 +2352,8 @@ void Renderer::createDstImage_RT() {
     transitionImageLayout(dstImage_RT, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
-
 void Renderer::loadMeshes() {
-    std::array<std::string, MAX_MESHES> meshPaths = {"teapot.obj"};
-
-    std::vector<glm::uvec2> meshOffsets;
+    std::array<std::string, NUM_MESHES> meshPaths = {"teapot.obj", "sphere.obj", "sphere.obj"};
 
     arenaInit(&vertexArena, 500000); // 0.5kb preallocated for every mesh
     arenaInit(&indexArena, 500000);
@@ -2479,7 +2378,7 @@ void Renderer::loadMeshes() {
             indexCount += shape.mesh.indices.size();
         }
 
-        size_t vertexCount = indexCount;
+        size_t vertexCount = attrib.vertices.size() / 3;
 
         vertexCounts.push_back(vertexCount);
         indexCounts.push_back(indexCount);
@@ -2491,8 +2390,8 @@ void Renderer::loadMeshes() {
         auto* indexDst = reinterpret_cast<INDEX_TYPE*>(indexData);
 
         auto* offsetData = arenaAlloc(&offsetArena, sizeof(glm::uvec2));
-        auto* arenaDst = reinterpret_cast<glm::uvec2*>(offsetData);
-        *arenaDst = glm::uvec2(vertexOffset, indexOffset);
+        auto* offsetDst = reinterpret_cast<glm::uvec2*>(offsetData);
+        *offsetDst = glm::uvec2(vertexOffset, indexOffset);
 
         BlasInput currentInstanceInput{};
 
@@ -2504,60 +2403,50 @@ void Renderer::loadMeshes() {
         currentInstanceInput.vertexFormat = VERTEX_FORMAT;
         blasData.push_back(currentInstanceInput);
 
-        size_t localVertexOffset = 0;
-        size_t localIndexOffset = 0;
+        std::vector<glm::vec3> normalAccum(vertexCount, glm::vec3(0.0f));
 
+        // accumulate face normals
         for (const auto& shape : shapes) {
             for (size_t f = 0; f < shape.mesh.indices.size(); f+=3) {
+                int i0 = shape.mesh.indices[f + 0].vertex_index;
+                int i1 = shape.mesh.indices[f + 1].vertex_index;
+                int i2 = shape.mesh.indices[f + 2].vertex_index;
 
-                glm::vec3 pos0 = {
-                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 0],
-                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 1],
-                    attrib.vertices[3 * shape.mesh.indices[f + 0].vertex_index + 2]
-                };
-                glm::vec3 pos1 = {
-                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 0],
-                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 1],
-                    attrib.vertices[3 * shape.mesh.indices[f + 1].vertex_index + 2]
-                };
-                glm::vec3 pos2 = {
-                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 0],
-                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 1],
-                    attrib.vertices[3 * shape.mesh.indices[f + 2].vertex_index + 2]
-                };
+                glm::vec3 p0(attrib.vertices[3*i0+0],  attrib.vertices[3*i0+1],  attrib.vertices[3*i0+2]);
+                glm::vec3 p1(attrib.vertices[3*i1+0],  attrib.vertices[3*i1+1],  attrib.vertices[3*i1+2]);
+                glm::vec3 p2(attrib.vertices[3*i2+0],  attrib.vertices[3*i2+1],  attrib.vertices[3*i2+2]);
 
-                // TODO: add functionality to read normals from the obj file if they are present
-                glm::vec3 faceNormal = glm::normalize(glm::cross(pos1 - pos0, pos2 - pos0));
+                glm::vec3 n = normalize(cross(p1 - p0, p2 - p0));
 
-                /*
-                glm::vec2 uv0{0.0f, 0.0f}, uv1{0.0f, 0.0f}, uv2{0.0f, 0.0f};
-                if (shape.mesh.indices[f + 0].texcoord_index >= 0)
-                    uv0 = { attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 0],
-                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 0].texcoord_index + 1] };
-                if (shape.mesh.indices[f + 1].texcoord_index >= 0)
-                    uv1 = { attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 0],
-                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 1].texcoord_index + 1] };
-                if (shape.mesh.indices[f + 2].texcoord_index >= 0)
-                    uv2 = { attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 0],
-                            1.0f - attrib.texcoords[2 * shape.mesh.indices[f + 2].texcoord_index + 1] };
-                            */
-
-                // no textures for now
-                auto texzero = glm::uvec2(0,0);
-                vertexDst[localVertexOffset + 0] = Vertex{.pos = pos0, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
-                vertexDst[localVertexOffset + 1] = Vertex{.pos = pos1, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
-                vertexDst[localVertexOffset + 2] = Vertex{.pos = pos2, .color = glm::vec3(1.0f), .tex = texzero, .normal = faceNormal};
-
-                indexDst[localIndexOffset + 0] = localVertexOffset + 0;
-                indexDst[localIndexOffset + 1] = localVertexOffset + 1;
-                indexDst[localIndexOffset + 2] = localVertexOffset + 2;
-
-                localVertexOffset += 3;
-                localIndexOffset += 3;
+                normalAccum[i0] += n;
+                normalAccum[i1] += n;
+                normalAccum[i2] += n;
             }
         }
-        vertexOffset += localVertexOffset;
-        indexOffset += localIndexOffset;
+
+        for (auto& n : normalAccum)
+            n = glm::normalize(n);
+
+        for (size_t v = 0; v < vertexCount; v++) {
+            vertexDst[v] = {
+                .pos = {
+                    attrib.vertices[3*v+0],
+                    attrib.vertices[3*v+1],
+                    attrib.vertices[3*v+2]
+                },
+                .color  = glm::vec3(1.0f),
+                .tex    = glm::uvec2(0,0),
+                .normal = normalAccum[v]
+            };
+        }
+
+        size_t idx = 0;
+        for (const auto& shape : shapes)
+            for (const auto& i : shape.mesh.indices)
+                indexDst[idx++] = i.vertex_index;
+
+        vertexOffset += vertexCount;
+        indexOffset += indexCount;
     }
 }
 
@@ -2565,6 +2454,8 @@ void Renderer::createBottomLevelAccelerationStructures() {
     for (auto& blasInput : blasData) {
         blasInput.vertexAddress = vertexBufferAddress + sizeof(Vertex) * blasInput.vertexOffset;
         blasInput.indexAddress = indexBufferAddress + sizeof(INDEX_TYPE) * blasInput.indexOffset;
+        //blasInput.vertexAddress = vertexBufferAddress;
+        //blasInput.indexAddress = indexBufferAddress;
 
         Blas blasInstance {};
         blasInstance.create(device, blasInput, *this);
@@ -2573,24 +2464,24 @@ void Renderer::createBottomLevelAccelerationStructures() {
     }
 }
 
-void Renderer::createTopLevelAccelerationStructure() {
+void Renderer::createTopLevelAccelerationStructure(const std::vector<glm::vec3>& positions) {
     std::vector<TlasInstance> instances;
-    for (const auto& blasInstance : blasPool) {
+    //for (const auto& blasInstance : blasPool) {
+    for (size_t i = 0; i < blasPool.size(); i++) {
+        const auto& blasInstance = blasPool[i];
+
         TlasInstance instance{};
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        VkTransformMatrixKHR transform{};
-        glm::mat4 mat = glm::mat4(1.0f);
 
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 4; ++j)
-                transform.matrix[i][j] = mat[i][j];
+        const auto startingPos = positions[i];
+        const auto transformMat = createTopLevelTransformMatrix(startingPos);
+        instance.transform = transformMat;
 
-        instance.transform = transform;
         VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         blasAddressInfo.accelerationStructure = blasInstance.handle;
         instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
-        instance.instanceCustomIndex = 0;
+        instance.instanceCustomIndex = static_cast<uint32_t>(i);
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
 
@@ -2598,4 +2489,18 @@ void Renderer::createTopLevelAccelerationStructure() {
     }
 
     tlas.create(device, instances, *this);
+}
+
+VkTransformMatrixKHR Renderer::createTopLevelTransformMatrix(glm::vec3 pos) {
+    VkTransformMatrixKHR t{};
+
+    t.matrix[0][0] = 1.0f;
+    t.matrix[1][1] = 1.0f;
+    t.matrix[2][2] = 1.0f;
+
+    t.matrix[0][3] = pos.x;
+    t.matrix[1][3] = pos.y;
+    t.matrix[2][3] = pos.z;
+
+    return t;
 }

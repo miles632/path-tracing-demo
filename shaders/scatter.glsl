@@ -20,15 +20,13 @@ hitPayload scatterLambertian(vec3 normal, vec3 rayDir, const float distance, ino
 }
 
 
-hitPayload scatterSpecular(vec3 normal, vec3 rayDir, const float distance, inout uint seed) {
-    const vec3 reflected = reflect(rayDir, normal);
+hitPayload scatterSpecular(vec3 normal, vec3 rayDir, const float distance, inout uint seed, vec3 color) {
+    const vec3 reflected = reflect(normalize(rayDir), normal);
     const bool isScattered = dot(reflected, normal) > 0;
 
     hitPayload p;
-    // since im not bothering to read color information from vertices and haven't implemented textures yet,
-    // i picked an arbitrary color
-    p.ColorAndDistance = vec4(vec3(1.0, 0.843, 0.0), distance);
-    p.ScatterDir = vec4(reflected + 0.001 * randomUnitInSphere(seed), isScattered ? 1.0 : 0.0);
+    p.ColorAndDistance = vec4(color ,distance);
+    p.ScatterDir = vec4(reflected + 0.000001 * randomUnitInSphere(seed), isScattered ? 1.0 : 0.0);
     p.RandomSeed = seed;
     return p;
 }

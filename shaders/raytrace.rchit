@@ -23,6 +23,7 @@ layout(binding = 5) readonly buffer IndexArray {
 layout(binding = 6) readonly buffer OffsetArray {
     uvec2 o[];
 } offsets;
+layout(binding = 7) uniform sampler2D DiffuseTex;
 
 vec3 Mix(vec3 a, vec3 b, vec3 c, vec3 barycentrics)
 {
@@ -43,8 +44,8 @@ Vertex UnpackVertex(uint baseIndex) {
 
 void main() {
     const uvec2 offs = offsets.o[gl_InstanceCustomIndexEXT];
-    const uint indexOffset = offs.x;
-    const uint vertexOffset = offs.y;
+    const uint indexOffset = offs.y;
+    const uint vertexOffset = offs.x;
 
     Vertex v0 = UnpackVertex(vertexOffset + indices.i[indexOffset + gl_PrimitiveID * 3 + 0]);
     Vertex v1 = UnpackVertex(vertexOffset + indices.i[indexOffset + gl_PrimitiveID * 3 + 1]);
@@ -57,5 +58,9 @@ void main() {
         )
     );
 
-    payload = scatterSpecular(normal, gl_WorldRayDirectionEXT, gl_HitTEXT, payload.RandomSeed);
+    //not rendering any textures atm
+    //vec3 color = texture(DiffuseTex, attribs).xyz; // ignore transparency for now
+    vec3 color = vec3(0.5, 0.5, 0.5);
+
+    payload = scatterSpecular(normal, gl_WorldRayDirectionEXT, gl_HitTEXT, payload.RandomSeed, color);
 }

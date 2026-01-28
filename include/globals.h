@@ -2,6 +2,9 @@
 #include <vector>
 #include <cstdint>
 #include <vulkan/vulkan.h>
+#include <array>
+#include <string>
+
 
 extern const uint32_t WIDTH;
 extern const uint32_t HEIGHT;
@@ -22,5 +25,9 @@ extern PFN_vkCmdTraceRaysKHR pfnCmdTraceRaysKHR;
 
 extern const VkFormat VERTEX_FORMAT;
 
-inline constexpr int MAX_MESHES = 1;
+inline constexpr int NUM_MESHES = 3;
+inline constexpr int NUM_TEXTURES = 0;
+
+extern std::array<std::string, NUM_MESHES> meshPaths;
+extern std::array<std::string, NUM_TEXTURES> texturePaths;
 typedef uint32_t INDEX_TYPE;
