@@ -1,39 +1,17 @@
 #pragma once
 
-#include "vulkan/vulkan.h"
-
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-
-#include <glm/gtc/matrix_transform.hpp>
+#include <vulkan/vulkan_core.h>
+#include "arena.h"
+#include "camera.h"
+#include "tlas.h"
+#include "blas.h"
+#include <glm/vec3.hpp>
 
 #include <vector>
-#include <iostream>
-#include <cstdlib>
-#include <stdexcept>
-#include <cstring>
-#include <optional>
-#include <set>
 #include <fstream>
+#include <set>
+#include <optional>
 #include <chrono>
-#include <tuple>
-
-#include "blas.h"
-#include "tlas.h"
-#include "vertex.h"
-#include "camera.h"
-#include "arena.h"
-#include "host_device.h"
-#include "globals.h"
-
-#include "blas.h"
-#include "tiny_obj_loader.h"
-#include "stb_image.h"
-#include "tlas.h"
-
 
 VkResult CreateDebugUtilsMessengerEXT(
     VkInstance instance,
@@ -310,6 +288,7 @@ private:
     void createTopLevelAccelerationStructure(const std::vector<glm::vec3>& positions);
     VkTransformMatrixKHR createTopLevelTransformMatrix(glm::vec3 pos);
 
-    void loadMeshes();
+    void loadMeshes_OBJ();
+    void loadMeshes_GLTF();
 };
 

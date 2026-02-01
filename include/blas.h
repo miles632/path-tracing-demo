@@ -1,8 +1,6 @@
 #pragma once
 
 #include "vertex.h"
-#include "vulkan/vulkan.h"
-//#include "renderer.h"
 
 struct Renderer; //forward declaration
 

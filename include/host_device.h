@@ -1,3 +1,4 @@
+#pragma once
 #ifdef __cplusplus
 #include <glm/glm.hpp>
     #define VEC2 glm::vec2

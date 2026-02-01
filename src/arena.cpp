@@ -1,7 +1,7 @@
-#include "../include/arena.h"
+#include "arena.h"
 
-#include <iostream>
 #include <stdexcept>
+#include <cstring>
 
 size_t alignUp(size_t n, size_t alignment) {
     return (n + alignment - 1) & ~(alignment - 1);

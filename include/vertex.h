@@ -1,11 +1,10 @@
 #pragma once
 
 #include <array>
-#include <cstdint>
-#include <vector>
-#include <glm/glm.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec2.hpp>
 #include <glm/mat4x4.hpp>
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #include "globals.h"
 

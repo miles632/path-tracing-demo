@@ -1,8 +1,8 @@
 #include <vulkan/vulkan_core.h>
 
-#include "../include/blas.h"
-#include "../include/globals.h"
-#include "../include/renderer.h"
+#include "blas.h"
+#include "globals.h"
+#include "renderer.h"
 
 void Blas::create(VkDevice device,
                   const BlasInput& input,

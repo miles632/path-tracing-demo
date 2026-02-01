@@ -2,6 +2,8 @@
 #include "globals.h"
 #include "renderer.h"
 
+#include <cstring>
+
 void Tlas::create(VkDevice device,
                   const std::vector<TlasInstance>& instances,
                   Renderer& state

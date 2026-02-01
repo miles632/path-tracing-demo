@@ -1,7 +1,5 @@
 #include "globals.h"
 
-#include <vulkan/vulkan_core.h>
-
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
 const int MAX_FRAMES_IN_FLIGHT = 2;

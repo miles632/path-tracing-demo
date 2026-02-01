@@ -1,6 +1,5 @@
-#include <cstdlib>
+#pragma once
 #include <cstddef>
-#include <cstring>
 
 struct Arena {
     size_t capacity;

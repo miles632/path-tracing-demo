@@ -1,5 +1,27 @@
 #include "renderer.h"
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <iostream>
+
+#include "vertex.h"
+#include "host_device.h"
+#include "globals.h"
+
+#include "blas.h"
+#include "tiny_obj_loader.h"
+#include "stb_image/stb_image.h"
+#include "tlas.h"
+#include "tinygltf/tiny_gltf.h"
+
+#include "vulkan/vulkan.h"
+
 VkResult CreateDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -55,7 +77,7 @@ void Renderer::initVulkan() {
         createDstImage_RT();
         createCamera();
 
-        loadMeshes();
+        loadMeshes_OBJ();
         createVertexBuffer();
         createIndexBuffer();
         createOffsetBuffer();
@@ -2352,7 +2374,12 @@ void Renderer::createDstImage_RT() {
     transitionImageLayout(dstImage_RT, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
-void Renderer::loadMeshes() {
+void Renderer::loadMeshes_GLTF() {
+    //TODO
+}
+
+
+void Renderer::loadMeshes_OBJ() {
     std::array<std::string, NUM_MESHES> meshPaths = {"teapot.obj", "sphere.obj", "sphere.obj"};
 
     arenaInit(&vertexArena, 500000); // 0.5kb preallocated for every mesh
