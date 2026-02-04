@@ -3,6 +3,7 @@
 #include "renderer.h"
 
 #include <cstring>
+#include <vulkan/vulkan_core.h>
 
 void Tlas::create(VkDevice device,
                   const std::vector<TlasInstance>& instances,
@@ -12,7 +13,7 @@ void Tlas::create(VkDevice device,
     std::vector<VkAccelerationStructureInstanceKHR> vkInstances;
     for (const auto& inst : instances) {
         VkAccelerationStructureInstanceKHR vkInst{};
-        vkInst.transform = inst.transform;
+        vkInst.transform = convert3x4GlmToVulkan(inst.transform);
         vkInst.instanceCustomIndex = inst.instanceCustomIndex;
         vkInst.mask = inst.mask;
         vkInst.instanceShaderBindingTableRecordOffset = inst.instanceShaderBindingTableRecordOffset;

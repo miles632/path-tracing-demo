@@ -1,11 +1,13 @@
 #pragma once
 
 #include <vulkan/vulkan_core.h>
+#include <glm/vec3.hpp>
+#include <GLFW/glfw3.h>
+
 #include "arena.h"
 #include "camera.h"
 #include "tlas.h"
 #include "blas.h"
-#include <glm/vec3.hpp>
 
 #include <vector>
 #include <fstream>
@@ -217,7 +219,6 @@ public:
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 private:
-    void createGraphicsPipeline();
     void createPipeline_RT();
 
     void createShaderBindingTable();
@@ -286,7 +287,7 @@ private:
 
     void createBottomLevelAccelerationStructures();
     void createTopLevelAccelerationStructure(const std::vector<glm::vec3>& positions);
-    VkTransformMatrixKHR createTopLevelTransformMatrix(glm::vec3 pos);
+    static glm::mat3x4 createTopLevelTransformMatrix(glm::vec3 pos);
 
     void loadMeshes_OBJ();
     void loadMeshes_GLTF();

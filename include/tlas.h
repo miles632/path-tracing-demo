@@ -1,12 +1,13 @@
 #pragma once
 
-#include "vulkan/vulkan_core.h"
+#include "foward_declarations.h"
 #include <vector>
+#include <glm/mat3x4.hpp>
 
 struct Renderer;
 
 struct TlasInstance {
-    VkTransformMatrixKHR transform;
+    glm::mat3x4 transform;
     uint32_t instanceCustomIndex : 24;
     uint32_t mask : 8;
     uint32_t instanceShaderBindingTableRecordOffset : 24;

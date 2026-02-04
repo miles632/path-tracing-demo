@@ -1,5 +1,7 @@
 #include "camera.h"
 
+#include <GLFW/glfw3.h>
+
 void Camera::move(float dT) {
     if (keys[GLFW_KEY_W])
         pos += speed * front * dT;

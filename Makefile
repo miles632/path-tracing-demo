@@ -2,9 +2,8 @@ CC = g++
 CXXFLAGS = -std=c++20 -I/usr/include -I/usr/local/include/glm -Iinclude -I$(VULKAN_SDK)/include
 LDFLAGS = -L/usr/lib -L$(VULKAN_SDK)/lib -lvulkan -lglfw
 
-DEBUG_FLAGS = -g -DDEBUG
-RELEASE_FLAGS = -O0 -Wall -Wshadow #-fsanitize=undefined,address
-#-Wextra -Wpedantic -Wshadow -fsanitize=undefined,address
+DEBUG_FLAGS = -g -O0 -DDEBUG 
+RELEASE_FLAGS = -O3 -Wall -Wshadow -DNDEBUG
 
 SOURCES = main.cpp src/camera.cpp src/blas.cpp src/tlas.cpp src/renderer.cpp src/globals.cpp src/arena.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
