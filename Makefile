@@ -1,5 +1,5 @@
 CC = g++
-CXXFLAGS = -std=c++20 -I/usr/include -I/usr/local/include/glm -Iinclude -I$(VULKAN_SDK)/include
+CXXFLAGS = -std=c++20 -I/usr/include -I/usr/local/include/glm -Iinclude -Iinclude/tinygltf -Iinclude/stb_image -I$(VULKAN_SDK)/include
 LDFLAGS = -L/usr/lib -L$(VULKAN_SDK)/lib -lvulkan -lglfw
 
 DEBUG_FLAGS = -g -O0 -DDEBUG 
