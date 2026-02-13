@@ -15,6 +15,8 @@
 #include <optional>
 #include <chrono>
 
+#include "tiny_gltf.h"
+
 VkResult CreateDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -286,10 +288,12 @@ private:
     void createDstImage_RT();
 
     void createBottomLevelAccelerationStructures();
-    void createTopLevelAccelerationStructure(const std::vector<glm::vec3>& positions);
+    void createTopLevelAccelerationStructure();
     static glm::mat3x4 createTopLevelTransformMatrix(glm::vec3 pos);
 
     void loadMeshes_OBJ();
     void loadMeshes_GLTF();
+    glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+    uint32_t getU32FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
 };
 
