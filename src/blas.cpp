@@ -16,8 +16,8 @@ void Blas::create(VkDevice device,
     geometry.geometry.triangles.vertexStride = input.vertexStride;
     geometry.geometry.triangles.vertexData.deviceAddress = input.vertexAddress;
     geometry.geometry.triangles.vertexFormat = input.vertexFormat;
-    geometry.geometry.triangles.maxVertex = input.vertexCount;
-    geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+    geometry.geometry.triangles.maxVertex = input.vertexCount - 1 ;
+    geometry.geometry.triangles.indexType = input.indexType;
     geometry.geometry.triangles.indexData.deviceAddress = input.indexAddress;
     geometry.geometry.triangles.transformData.deviceAddress = 0;
 

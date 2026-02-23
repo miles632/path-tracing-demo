@@ -15,6 +15,7 @@ struct BlasInput {
     size_t indexOffset;
 
     VkFormat vertexFormat;
+    VkIndexType indexType = VK_INDEX_TYPE_UINT32;
     const uint32_t vertexStride = sizeof(Vertex);
 };
 
