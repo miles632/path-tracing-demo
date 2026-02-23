@@ -58,6 +58,20 @@ typedef enum RenderingMode {
     RENDERING_MODE_WIREFRAME,
 } RenderingMode;
 
+struct SceneInstance {
+    glm::mat4 transform;
+    uint32_t primitiveIndex;
+};
+
+struct PrimitiveInfo {
+    BlasInput blas;
+};
+
+struct MeshInfo {
+    uint32_t firstPrimitive;
+    uint32_t primitiveCount;
+};
+
 class Renderer {
 public:
     void run() {
@@ -129,11 +143,16 @@ private:
     std::vector<size_t> vertexCounts;
     std::vector<size_t> indexCounts;
 
+    //std::vector<DrawCommand> drawCommands;
+    std::vector<PrimitiveInfo> primitiveInfos;
+    std::vector<SceneInstance> sceneInstances;
+    std::vector<MeshInfo> meshInfos;
+
     Arena vertexArena;
     Arena indexArena;
     Arena offsetArena;
 
-    std::vector<BlasInput> blasData;
+    //std::vector<BlasInput> blasData;
     std::vector<Blas> blasPool;
 
     Tlas tlas;
@@ -294,6 +313,10 @@ private:
     void loadMeshes_OBJ();
     void loadMeshes_GLTF();
     glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
-    uint32_t getU32FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+    uint32_t getIndexFromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+    void traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
+    void traverseNodes_GLTF(tinygltf::Model& model);
+    void processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
+    glm::mat4 getFinalMatrix_GLTF(tinygltf::Node& node);
 };
 

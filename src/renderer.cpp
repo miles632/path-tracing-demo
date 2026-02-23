@@ -7,6 +7,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <iostream>
 #include <cstring>
@@ -2245,14 +2246,85 @@ void Renderer::createDstImage_RT() {
     transitionImageLayout(dstImage_RT, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
+
+void Renderer::traverseNodes_GLTF(tinygltf::Model& model) {
+
+    const tinygltf::Scene& scene =
+        model.scenes[model.defaultScene >= 0 ? model.defaultScene : 0];
+
+    for (int nodeIndex : scene.nodes) {
+        traverseNode_GLTF(model, model.nodes[nodeIndex], glm::mat4(1.0f));
+    }
+}
+
+void Renderer::traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform) {
+    glm::mat4 local = getFinalMatrix_GLTF(node);
+    glm::mat4 worldTransform = parentTransform * local;
+
+    processNode_GLTF(model, node, worldTransform);
+
+    for (const auto i : node.children) {
+        traverseNode_GLTF(model, model.nodes[i], worldTransform);
+    }
+}
+
+void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform) {
+    if (node.mesh >= 0) {
+        tinygltf::Mesh& mesh = model.meshes[node.mesh];
+
+        MeshInfo& mInfo = meshInfos[node.mesh];
+        for (uint32_t i = 0; i < mInfo.primitiveCount; i++) {
+            PrimitiveInfo& pi = primitiveInfos[mInfo.firstPrimitive + i];
+
+            SceneInstance si;
+            si.primitiveIndex = mInfo.firstPrimitive + i;
+            si.transform = parentTransform;
+            sceneInstances.push_back(si);
+
+        }
+    }
+}
+
+glm::mat4 Renderer::getFinalMatrix_GLTF(tinygltf::Node& node) {
+    glm::vec3 t(0.0f);
+    if (!node.translation.empty()) {
+        t.x = node.translation[0];
+        t.y = node.translation[1];
+        t.z = node.translation[2];
+    }
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), t);
+
+    glm::quat r(1.0f, 0.0f, 0.0f, 0.0f);
+    if (!node.rotation.empty()) {
+        r.x = node.rotation[0];
+        r.y = node.rotation[1];
+        r.z = node.rotation[2];
+        r.w = node.rotation[3];
+    }
+
+    glm::mat4 R = glm::mat4_cast(r);
+
+    glm::vec3 s(1.0f);
+    if (!node.scale.empty()) {
+        s.x = static_cast<float>(node.scale[0]);
+        s.y = static_cast<float>(node.scale[1]);
+        s.z = static_cast<float>(node.scale[2]);
+    }
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), s);
+
+    return T * R * S;
+}
+
+
 void Renderer::loadMeshes_GLTF() {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    std::string filename = "meshes/chess.glb";
+    std::string filename = "meshes/lucy.glb";
 
     bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+    //bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
 
     if (!warn.empty()) {
         printf("Warn: %s\n", warn.c_str());
@@ -2266,15 +2338,26 @@ void Renderer::loadMeshes_GLTF() {
         printf("Failed to parse glTF: %s\n", filename.c_str());
     }
 
-
     std::vector<glm::uvec2> offs;
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
 
     // retrieve counts
     for (const tinygltf::Mesh& mesh : model.meshes) {
+        MeshInfo mi;
+        mi.firstPrimitive = primitiveInfos.size();
+
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
             auto itVert = primitive.attributes.find("POSITION");
+
+            if (primitive.indices != -1) {
+                const auto& accessorIndex = model.accessors[primitive.indices];
+                std::cout << "Index count: " << accessorIndex.count
+                          << ", index type: " << accessorIndex.componentType << std::endl;
+            } else {
+                std::cout << "Primitive has no indices" << std::endl;
+            }
+
             auto accessorIndices = primitive.indices;
 
             if (itVert == primitive.attributes.end()) {
@@ -2284,10 +2367,8 @@ void Renderer::loadMeshes_GLTF() {
                 continue;
             }
 
-
             const uint32_t baseVertex = vertexCount;
             const uint32_t baseIndex = indexCount;
-
 
             const tinygltf::Accessor& accessorVert = model.accessors[itVert->second];
 
@@ -2297,6 +2378,7 @@ void Renderer::loadMeshes_GLTF() {
             uint32_t localIndexCount = 0;
 
             if (primitive.indices == -1) {
+                std::abort();
 #ifdef NDEBUG
                  std::cout << "primitive not indexed" << std::endl;
 #endif
@@ -2310,14 +2392,31 @@ void Renderer::loadMeshes_GLTF() {
 
             offs.push_back(glm::uvec2(baseVertex, baseIndex));
 
-            BlasInput input;
-            input.vertexCount = localVertexCount;
-            input.indexCount = localIndexCount;
-            input.vertexOffset = baseVertex;
-            input.indexOffset = baseIndex;
-            input.vertexFormat = VERTEX_FORMAT;
-            blasData.push_back(input);
+            PrimitiveInfo pi;
+            pi.blas.vertexCount = localVertexCount;
+            pi.blas.indexCount = localIndexCount;
+            pi.blas.vertexOffset = baseVertex;
+            pi.blas.indexOffset = baseIndex;
+            pi.blas.vertexFormat = VERTEX_FORMAT;
+            switch (model.accessors[accessorIndices].componentType) {
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+                    pi.blas.indexType = VK_INDEX_TYPE_UINT8;
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+                    pi.blas.indexType = VK_INDEX_TYPE_UINT16;
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+                    pi.blas.indexType = VK_INDEX_TYPE_UINT32;
+                    break;
+
+                default:
+                    std::abort();
+            }
+            primitiveInfos.push_back(pi);
         }
+
+        mi.primitiveCount = primitiveInfos.size() - mi.firstPrimitive;
+        meshInfos.push_back(mi);
     }
 
     arenaInit(&vertexArena, vertexCount * sizeof(Vertex));
@@ -2337,7 +2436,6 @@ void Renderer::loadMeshes_GLTF() {
     // write to arenas
     uint32_t primitiveCount = 0;
     for (const tinygltf::Mesh& mesh : model.meshes) {
-        //for (uint32_t primitiveCount = 0; primitiveCount < mesh.primitives.size(); ++primitiveCount) {
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
 
             auto itPos = primitive.attributes.find("POSITION");
@@ -2352,9 +2450,7 @@ void Renderer::loadMeshes_GLTF() {
                 continue;
             }
             if (itNormal == primitive.attributes.end()) {
-#ifdef NDEBUG
                 std::cout << "primitive has no normal" << std::endl;
-#endif
                 // compute normals  ....
             }
 
@@ -2380,30 +2476,38 @@ void Renderer::loadMeshes_GLTF() {
                 glm::vec3 pos = getVec3FromAccessor(accessorPos, bufferViewPos, bufferPos, v);
                 glm::vec3 normal = getVec3FromAccessor(accessorNormal, bufferViewNormal, bufferNormal, v);
 
-                uint32_t baseVertex = offs[primitiveCount].x;
-
                 Vertex vert;
                 vert.pos = pos;
                 vert.normal = normal;
-                vert.color = glm::vec3{1};
-                vert.tex = glm::vec2{0};
+                //std::cout << "Normal: " << normal.x << " " << normal.y << " " << normal.z << std::endl;
+                vert.color = glm::vec3(1);
+                vert.tex = glm::vec2(0);
 
                 vertices[baseVertex + v] = vert;
             }
 
             if (primitive.indices != -1) {
                 for (uint32_t i = 0; i < accessorIndex.count; i++) {
-                    uint32_t idx = getU32FromAccessor(accessorIndex, bufferViewIndex, bufferIndex, i);
-                    indices[baseIndex + i] = baseVertex + idx;
+                    uint32_t idx = getIndexFromAccessor(accessorIndex, bufferViewIndex, bufferIndex, i);
+                    indices[baseIndex + i] = idx;
+                    //indices[baseIndex + i] = idx + baseVertex;
                 }
             } else {
                 for (uint32_t i = 0; i < accessorPos.count; i++) {
-                    indices[baseIndex + i] = baseVertex + i;
+                    indices[baseIndex + i] = i;
                 }
             }
 
             primitiveCount++;
         }
+    }
+
+
+    traverseNodes_GLTF(model);
+    std::cout << sceneInstances.size() << std::endl;
+    for (auto& pi : primitiveInfos) {
+        std::cout << "Primitive vertexCount: " << pi.blas.vertexCount
+                  << " indexCount: " << pi.blas.indexCount << std::endl;
     }
 }
 
@@ -2429,7 +2533,7 @@ glm::vec3 Renderer::getVec3FromAccessor(const tinygltf::Accessor &accessor, cons
     return glm::vec3(vector[0], vector[1], vector[2]);
 }
 
-uint32_t Renderer::getU32FromAccessor(const tinygltf::Accessor &accessor, const tinygltf::BufferView &bufferView,
+uint32_t Renderer::getIndexFromAccessor(const tinygltf::Accessor &accessor, const tinygltf::BufferView &bufferView,
     const tinygltf::Buffer &buffer, const size_t index) {
 
     //size_t byteStride = bufferView.byteStride == 0 ? sizeof(uint32_t) : bufferView.byteStride;
@@ -2511,7 +2615,7 @@ void Renderer::loadMeshes_OBJ() {
         currentInstanceInput.vertexOffset = vertexOffset;
         currentInstanceInput.indexOffset = indexOffset;
         currentInstanceInput.vertexFormat = VERTEX_FORMAT;
-        blasData.push_back(currentInstanceInput);
+        //blasData.push_back(currentInstanceInput);
 
         std::vector<glm::vec3> normalAccum(vertexCount, glm::vec3(0.0f));
 
@@ -2561,7 +2665,8 @@ void Renderer::loadMeshes_OBJ() {
 }
 
 void Renderer::createBottomLevelAccelerationStructures() {
-    for (auto& blasInput : blasData) {
+    for (auto& pi : primitiveInfos) {
+        BlasInput& blasInput = pi.blas;
         blasInput.vertexAddress = vertexBufferAddress + sizeof(Vertex) * blasInput.vertexOffset;
         blasInput.indexAddress = indexBufferAddress + sizeof(INDEX_TYPE) * blasInput.indexOffset;
         //blasInput.vertexAddress = vertexBufferAddress;
@@ -2575,30 +2680,34 @@ void Renderer::createBottomLevelAccelerationStructures() {
 }
 
 void Renderer::createTopLevelAccelerationStructure() {
-    std::vector<TlasInstance> instances;
-    //for (const auto& blasInstance : blasPool) {
-    for (size_t i = 0; i < blasPool.size(); i++) {
-        const auto& blasInstance = blasPool[i];
+
+    std::vector<TlasInstance> tlasInstances;
+
+    for (size_t i = 0; i < sceneInstances.size(); i++) {
+        const SceneInstance& inst = sceneInstances[i];
+
+        const Blas& blas = blasPool[inst.primitiveIndex];
 
         TlasInstance instance{};
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        glm::mat4 m4 = inst.transform;
+        glm::mat3x4 m3x4(inst.transform);
 
-        const auto startingPos = glm::vec3(1.0 * i * 2, 1.0 * i * 2, 1.0 * i * 2);
-        const auto transformMat = createTopLevelTransformMatrix(startingPos);
-        instance.transform = transformMat;
+        instance.transform = m3x4;
+        //instance.transform = glm::mat4(1.0f);
 
         VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-        blasAddressInfo.accelerationStructure = blasInstance.handle;
+        blasAddressInfo.accelerationStructure = blas.handle;
         instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
         instance.instanceCustomIndex = static_cast<uint32_t>(i);
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
+        tlasInstances.push_back(instance);
 
-        instances.push_back(instance);
     }
 
-    tlas.create(device, instances, *this);
+    tlas.create(device, tlasInstances, *this);
 }
 
 // the reason why glm instead of just using VkTransformMatrixKHR is to avoid including vulkan.h in tlas.h
