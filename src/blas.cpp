@@ -13,10 +13,10 @@ void Blas::create(VkDevice device,
     geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
     geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
     geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-    geometry.geometry.triangles.vertexStride = input.vertexStride;
+    geometry.geometry.triangles.vertexStride = sizeof(Vertex);
     geometry.geometry.triangles.vertexData.deviceAddress = input.vertexAddress;
     geometry.geometry.triangles.vertexFormat = input.vertexFormat;
-    geometry.geometry.triangles.maxVertex = input.vertexCount - 1 ;
+    geometry.geometry.triangles.maxVertex = input.vertexCount - 1;
     geometry.geometry.triangles.indexType = input.indexType;
     geometry.geometry.triangles.indexData.deviceAddress = input.indexAddress;
     geometry.geometry.triangles.transformData.deviceAddress = 0;

@@ -2321,10 +2321,10 @@ void Renderer::loadMeshes_GLTF() {
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    std::string filename = "meshes/lucy.glb";
+    std::string filename = "meshes/sponza.gltf";
 
-    bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
-    //bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+    //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
 
     if (!warn.empty()) {
         printf("Warn: %s\n", warn.c_str());
@@ -2349,44 +2349,20 @@ void Renderer::loadMeshes_GLTF() {
 
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
             auto itVert = primitive.attributes.find("POSITION");
+            if (itVert == primitive.attributes.end()) continue;
 
-            if (primitive.indices != -1) {
-                const auto& accessorIndex = model.accessors[primitive.indices];
-                std::cout << "Index count: " << accessorIndex.count
-                          << ", index type: " << accessorIndex.componentType << std::endl;
-            } else {
-                std::cout << "Primitive has no indices" << std::endl;
-            }
-
-            auto accessorIndices = primitive.indices;
-
-            if (itVert == primitive.attributes.end()) {
-#ifdef NDEBUG
-                std::cout << "primitive has no position" << std::endl;
-#endif
-                continue;
-            }
+            const tinygltf::Accessor& accessorVert = model.accessors[itVert->second];
+            const int accessorIndex = primitive.indices;
 
             const uint32_t baseVertex = vertexCount;
             const uint32_t baseIndex = indexCount;
 
-            const tinygltf::Accessor& accessorVert = model.accessors[itVert->second];
-
             const uint32_t localVertexCount = static_cast<uint32_t>(accessorVert.count);
             vertexCount += localVertexCount;
 
-            uint32_t localIndexCount = 0;
+            bool hasIndices = primitive.indices != -1;
 
-            if (primitive.indices == -1) {
-                std::abort();
-#ifdef NDEBUG
-                 std::cout << "primitive not indexed" << std::endl;
-#endif
-                localIndexCount = localVertexCount;
-            } else {
-                const tinygltf::Accessor& accessorIndex = model.accessors[primitive.indices];
-                localIndexCount = static_cast<uint32_t>(accessorIndex.count);
-            }
+            const uint32_t localIndexCount = hasIndices ? static_cast<uint32_t>(model.accessors[accessorIndex].count) : localVertexCount;
 
             indexCount += localIndexCount;
 
@@ -2398,20 +2374,6 @@ void Renderer::loadMeshes_GLTF() {
             pi.blas.vertexOffset = baseVertex;
             pi.blas.indexOffset = baseIndex;
             pi.blas.vertexFormat = VERTEX_FORMAT;
-            switch (model.accessors[accessorIndices].componentType) {
-                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-                    pi.blas.indexType = VK_INDEX_TYPE_UINT8;
-                    break;
-                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-                    pi.blas.indexType = VK_INDEX_TYPE_UINT16;
-                    break;
-                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
-                    pi.blas.indexType = VK_INDEX_TYPE_UINT32;
-                    break;
-
-                default:
-                    std::abort();
-            }
             primitiveInfos.push_back(pi);
         }
 
@@ -2476,10 +2438,9 @@ void Renderer::loadMeshes_GLTF() {
                 glm::vec3 pos = getVec3FromAccessor(accessorPos, bufferViewPos, bufferPos, v);
                 glm::vec3 normal = getVec3FromAccessor(accessorNormal, bufferViewNormal, bufferNormal, v);
 
-                Vertex vert;
+                Vertex vert{};
                 vert.pos = pos;
                 vert.normal = normal;
-                //std::cout << "Normal: " << normal.x << " " << normal.y << " " << normal.z << std::endl;
                 vert.color = glm::vec3(1);
                 vert.tex = glm::vec2(0);
 
@@ -2490,7 +2451,6 @@ void Renderer::loadMeshes_GLTF() {
                 for (uint32_t i = 0; i < accessorIndex.count; i++) {
                     uint32_t idx = getIndexFromAccessor(accessorIndex, bufferViewIndex, bufferIndex, i);
                     indices[baseIndex + i] = idx;
-                    //indices[baseIndex + i] = idx + baseVertex;
                 }
             } else {
                 for (uint32_t i = 0; i < accessorPos.count; i++) {
@@ -2504,11 +2464,6 @@ void Renderer::loadMeshes_GLTF() {
 
 
     traverseNodes_GLTF(model);
-    std::cout << sceneInstances.size() << std::endl;
-    for (auto& pi : primitiveInfos) {
-        std::cout << "Primitive vertexCount: " << pi.blas.vertexCount
-                  << " indexCount: " << pi.blas.indexCount << std::endl;
-    }
 }
 
 glm::vec3 Renderer::getVec3FromAccessor(const tinygltf::Accessor &accessor, const tinygltf::BufferView &bufferView,
@@ -2561,106 +2516,6 @@ uint32_t Renderer::getIndexFromAccessor(const tinygltf::Accessor &accessor, cons
 
         default:
             std::abort();
-    }
-}
-
-
-
-void Renderer::loadMeshes_OBJ() {
-    std::array<std::string, NUM_MESHES> meshPaths = {"teapot.obj", "sphere.obj", "sphere.obj"};
-
-    arenaInit(&vertexArena, 500000); // 0.5kb preallocated for every mesh
-    arenaInit(&indexArena, 500000);
-    arenaInit(&offsetArena, 50);
-
-    size_t vertexOffset = 0;
-    size_t indexOffset = 0;
-
-    for (int i = 0; i < meshPaths.size(); i++) {
-        std::string path = "meshes/" + meshPaths[i];
-
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
-
-        bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.c_str());
-        if (!ret) throw std::runtime_error("failed loading mesh");
-
-        size_t indexCount = 0;
-        for (const auto& shape : shapes) {
-            indexCount += shape.mesh.indices.size();
-        }
-
-        size_t vertexCount = attrib.vertices.size() / 3;
-
-        vertexCounts.push_back(vertexCount);
-        indexCounts.push_back(indexCount);
-
-        auto* vertexData = arenaAlloc(&vertexArena, vertexCount * sizeof(Vertex));
-        auto* indexData = arenaAlloc(&indexArena, indexCount * sizeof(INDEX_TYPE));
-
-        auto* vertexDst = reinterpret_cast<Vertex*>(vertexData);
-        auto* indexDst = reinterpret_cast<INDEX_TYPE*>(indexData);
-
-        auto* offsetData = arenaAlloc(&offsetArena, sizeof(glm::uvec2));
-        auto* offsetDst = reinterpret_cast<glm::uvec2*>(offsetData);
-        *offsetDst = glm::uvec2(vertexOffset, indexOffset);
-
-        BlasInput currentInstanceInput{};
-
-        // addresses stay uninitialized until vert and idx buffers are created
-        currentInstanceInput.vertexCount = vertexCount;
-        currentInstanceInput.indexCount = indexCount;
-        currentInstanceInput.vertexOffset = vertexOffset;
-        currentInstanceInput.indexOffset = indexOffset;
-        currentInstanceInput.vertexFormat = VERTEX_FORMAT;
-        //blasData.push_back(currentInstanceInput);
-
-        std::vector<glm::vec3> normalAccum(vertexCount, glm::vec3(0.0f));
-
-        // accumulate face normals
-        for (const auto& shape : shapes) {
-            for (size_t f = 0; f < shape.mesh.indices.size(); f+=3) {
-                int i0 = shape.mesh.indices[f + 0].vertex_index;
-                int i1 = shape.mesh.indices[f + 1].vertex_index;
-                int i2 = shape.mesh.indices[f + 2].vertex_index;
-
-                glm::vec3 p0(attrib.vertices[3*i0+0],  attrib.vertices[3*i0+1],  attrib.vertices[3*i0+2]);
-                glm::vec3 p1(attrib.vertices[3*i1+0],  attrib.vertices[3*i1+1],  attrib.vertices[3*i1+2]);
-                glm::vec3 p2(attrib.vertices[3*i2+0],  attrib.vertices[3*i2+1],  attrib.vertices[3*i2+2]);
-
-                glm::vec3 n = normalize(cross(p1 - p0, p2 - p0));
-
-                normalAccum[i0] += n;
-                normalAccum[i1] += n;
-                normalAccum[i2] += n;
-            }
-        }
-
-        for (auto& n : normalAccum)
-            n = glm::normalize(n);
-
-        for (size_t v = 0; v < vertexCount; v++) {
-            vertexDst[v] = {
-                .pos = {
-                    attrib.vertices[3*v+0],
-                    attrib.vertices[3*v+1],
-                    attrib.vertices[3*v+2]
-                },
-                .color  = glm::vec3(1.0f),
-                .tex    = glm::uvec2(0,0),
-                .normal = normalAccum[v]
-            };
-        }
-
-        size_t idx = 0;
-        for (const auto& shape : shapes)
-            for (const auto& i : shape.mesh.indices)
-                indexDst[idx++] = i.vertex_index;
-
-        vertexOffset += vertexCount;
-        indexOffset += indexCount;
     }
 }
 
