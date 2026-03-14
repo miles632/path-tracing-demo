@@ -24,9 +24,6 @@ extern PFN_vkCmdTraceRaysKHR pfnCmdTraceRaysKHR;
 
 extern const VkFormat VERTEX_FORMAT;
 
-inline constexpr int NUM_MESHES = 3;
-inline constexpr int NUM_TEXTURES = 0;
+extern uint32_t NUM_TEXTURES;
 
-extern std::array<std::string, NUM_MESHES> meshPaths;
-extern std::array<std::string, NUM_TEXTURES> texturePaths;
 typedef uint32_t INDEX_TYPE;

@@ -11,6 +11,7 @@ struct TlasInstance {
     uint32_t instanceCustomIndex : 24;
     uint32_t mask : 8;
     uint32_t instanceShaderBindingTableRecordOffset : 24;
+    uint32_t materialIndex;
     VkGeometryInstanceFlagsKHR flags : 8;
     uint64_t blasDeviceAddress;
 };
@@ -28,4 +29,6 @@ public:
                 );
 
     void destroy(VkDevice device);
+
+
 };

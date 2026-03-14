@@ -12,7 +12,7 @@
 #include <iostream>
 #include <cstring>
 
-#include "vertex.h"
+//#include "vertex.h"
 #include "host_device.h"
 #include "globals.h"
 
@@ -66,40 +66,88 @@ void Renderer::initWindow() {
 }
 
 void Renderer::initVulkan() {
-        createInstance();
-        setupDebugMessenger();
-        createSurface();
-        pickPhysicalDevice();
-        createLogicalDevice();
-        createSwapChain();
-        createImageViews();
+    std::cout << "[Init] Creating Vulkan instance\n";
+    createInstance();
 
-        createCommandPool();
-        createStorageImage_RT();
-        createDstImage_RT();
-        createCamera();
+    std::cout << "[Init] Setting up debug messenger\n";
+    setupDebugMessenger();
 
-        //loadMeshes_OBJ();
-    loadMeshes_GLTF();
-        createVertexBuffer();
-        createIndexBuffer();
-        createOffsetBuffer();
-        createUniformBuffers();
+    std::cout << "[Init] Creating surface\n";
+    createSurface();
 
-        createBottomLevelAccelerationStructures();
-        createTopLevelAccelerationStructure();
+    std::cout << "[Init] Selecting physical device\n";
+    pickPhysicalDevice();
 
-        createTextureImages();
-        createTextureSampler();
+    std::cout << "[Init] Creating logical device\n";
+    createLogicalDevice();
 
-        createDescriptorSetLayout_RT();
-        createPipeline_RT();
-        createDescriptorPool_RT();
-        createDescriptorSet_RT();
+    std::cout << "[Init] Creating swapchain\n";
+    createSwapChain();
 
-        createCommandBuffers();
-        createShaderBindingTable();
-        createSyncObjects();
+    std::cout << "[Init] Creating swapchain image views\n";
+    createImageViews();
+
+    std::cout << "[Init] Creating command pool\n";
+    createCommandPool();
+
+    std::cout << "[Init] Creating ray tracing storage image\n";
+    createStorageImage_RT();
+
+    std::cout << "[Init] Creating destination image\n";
+    createDstImage_RT();
+
+    std::cout << "[Init] Creating camera\n";
+    createCamera();
+
+    std::cout << "[Init] Loading GLTF meshes\n";
+    createScene_GLTF();
+
+    std::cout << "[Init] Creating vertex buffer\n";
+    createVertexBuffer();
+
+    std::cout << "[Init] Creating index buffer\n";
+    createIndexBuffer();
+
+    std::cout << "[Init] Creating offset buffer\n";
+    createOffsetBuffer();
+
+    std::cout << "[Init] Creating material buffer\n";
+    createMaterialBuffer();
+
+    std::cout << "[Init] Creating uniform buffers\n";
+    createUniformBuffers();
+
+    std::cout << "[Init] Building BLAS\n";
+    createBottomLevelAccelerationStructures();
+
+    std::cout << "[Init] Building TLAS\n";
+    createTopLevelAccelerationStructure();
+
+    std::cout << "[Init] Creating texture images\n";
+    createTextureImages();
+
+    std::cout << "[Init] Creating descriptor set layout\n";
+    createDescriptorSetLayout_RT();
+
+    std::cout << "[Init] Creating ray tracing pipeline\n";
+    createPipeline_RT();
+
+    std::cout << "[Init] Creating descriptor pool\n";
+    createDescriptorPool_RT();
+
+    std::cout << "[Init] Allocating descriptor set\n";
+    createDescriptorSet_RT();
+
+    std::cout << "[Init] Creating command buffers\n";
+    createCommandBuffers();
+
+    std::cout << "[Init] Creating shader binding table\n";
+    createShaderBindingTable();
+
+    std::cout << "[Init] Creating synchronization objects\n";
+    createSyncObjects();
+
+    std::cout << "[Init] Vulkan initialization complete\n";
 }
 void Renderer::createVertexBuffer() {
     std::byte* vertexData = vertexArena.data;
@@ -1128,7 +1176,7 @@ void Renderer::createPipeline_RT() {
                             VK_SHADER_STAGE_MISS_BIT_KHR |
                             VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
     pcRange.offset = 0;
-    pcRange.size = sizeof(vk_device::PushConstants);
+    pcRange.size = sizeof(PushConstants);
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1247,18 +1295,6 @@ void Renderer::createDescriptorSet_RT() {
     allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     allocInfo.pSetLayouts = layouts.data();
 
-    std::vector<VkDescriptorImageInfo> textureImgInfos;
-    textureImgInfos.reserve(textures.size());
-
-    for (const auto& texture : textures) {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = texture.view;
-        imageInfo.sampler = textureSampler;
-
-        textureImgInfos.push_back(imageInfo);
-    }
-
     descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
 
     if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
@@ -1266,6 +1302,20 @@ void Renderer::createDescriptorSet_RT() {
     }
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+
+        std::vector<VkDescriptorImageInfo> textureImgInfos;
+        textureImgInfos.reserve(textures.size());
+
+        for (const auto& texture : textures) {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = texture.view;
+            assert(texture.view != VK_NULL_HANDLE);
+            imageInfo.sampler = texture.sampler;
+
+            textureImgInfos.push_back(imageInfo);
+        }
+
         // UBO not needed for raytracing, at least for now using simple methods
         VkDescriptorBufferInfo UBOInfo{};
         UBOInfo.buffer = uniformBuffers[i];
@@ -1302,8 +1352,13 @@ void Renderer::createDescriptorSet_RT() {
         storageBufInfoOffset.offset = 0;
         storageBufInfoOffset.range = VK_WHOLE_SIZE;
 
+        VkDescriptorBufferInfo materialBufferInfo{};
+        materialBufferInfo.buffer = materialBuffer;
+        materialBufferInfo.range = VK_WHOLE_SIZE;
+        materialBufferInfo.offset = 0;
 
-        VkWriteDescriptorSet writeAccelStr;
+
+        VkWriteDescriptorSet writeAccelStr{};
         writeAccelStr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeAccelStr.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
         writeAccelStr.dstSet = descriptorSets[i];
@@ -1312,7 +1367,7 @@ void Renderer::createDescriptorSet_RT() {
         writeAccelStr.dstArrayElement = 0;
         writeAccelStr.pNext = &accelStruct;
 
-        VkWriteDescriptorSet writeStorageImage;
+        VkWriteDescriptorSet writeStorageImage{};
         writeStorageImage.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeStorageImage.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writeStorageImage.dstSet = descriptorSets[i];
@@ -1322,7 +1377,7 @@ void Renderer::createDescriptorSet_RT() {
         writeStorageImage.pImageInfo = &storageImageInfo;
         writeStorageImage.pNext = nullptr;
 
-        VkWriteDescriptorSet writeDstImage;
+        VkWriteDescriptorSet writeDstImage{};
         writeDstImage.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeDstImage.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writeDstImage.dstSet = descriptorSets[i];
@@ -1332,7 +1387,7 @@ void Renderer::createDescriptorSet_RT() {
         writeDstImage.pImageInfo = &dstImageInfo;
         writeDstImage.pNext = nullptr;
 
-        VkWriteDescriptorSet writeUBO;
+        VkWriteDescriptorSet writeUBO{};
         writeUBO.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeUBO.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         writeUBO.dstSet = descriptorSets[i];
@@ -1342,7 +1397,7 @@ void Renderer::createDescriptorSet_RT() {
         writeUBO.pBufferInfo = &UBOInfo;
         writeUBO.pNext = nullptr;
 
-        VkWriteDescriptorSet writeStorageHitVertex;
+        VkWriteDescriptorSet writeStorageHitVertex{};
         writeStorageHitVertex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeStorageHitVertex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writeStorageHitVertex.dstSet = descriptorSets[i];
@@ -1352,7 +1407,7 @@ void Renderer::createDescriptorSet_RT() {
         writeStorageHitVertex.pBufferInfo = &storageBufInfoVertex;
         writeStorageHitVertex.pNext = nullptr;
 
-        VkWriteDescriptorSet writeStorageHitIndex;
+        VkWriteDescriptorSet writeStorageHitIndex{};
         writeStorageHitIndex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeStorageHitIndex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writeStorageHitIndex.dstSet = descriptorSets[i];
@@ -1362,7 +1417,7 @@ void Renderer::createDescriptorSet_RT() {
         writeStorageHitIndex.pBufferInfo = &storageBufInfoIndex;
         writeStorageHitIndex.pNext = nullptr;
 
-        VkWriteDescriptorSet writeStorageHitOffsets;
+        VkWriteDescriptorSet writeStorageHitOffsets{};
         writeStorageHitOffsets.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeStorageHitOffsets.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writeStorageHitOffsets.dstSet = descriptorSets[i];
@@ -1372,19 +1427,31 @@ void Renderer::createDescriptorSet_RT() {
         writeStorageHitOffsets.pBufferInfo = &storageBufInfoOffset;
         writeStorageHitOffsets.pNext = nullptr;
 
-        VkWriteDescriptorSet writeTextures;
+        VkWriteDescriptorSet writeTextures{};
         writeTextures.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeTextures.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writeTextures.dstSet = descriptorSets[i];
         writeTextures.dstBinding = 7;
-        writeTextures.descriptorCount = static_cast<uint32_t>(textureImgInfos.size());
+        //writeTextures.descriptorCount = static_cast<uint32_t>(textureImgInfos.size());
+        writeTextures.descriptorCount = NUM_TEXTURES;
         writeTextures.dstArrayElement = 0;
         writeTextures.pImageInfo = textureImgInfos.data();
+        writeTextures.pBufferInfo = nullptr;
+        writeTextures.pTexelBufferView = nullptr;
         writeTextures.pNext = nullptr;
 
+        VkWriteDescriptorSet writeMaterials{};
+        writeMaterials.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeMaterials.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writeMaterials.dstSet = descriptorSets[i];
+        writeMaterials.dstBinding = 8;
+        writeMaterials.descriptorCount = 1;
+        writeMaterials.dstArrayElement = 0;
+        writeMaterials.pBufferInfo = &materialBufferInfo;
+        writeMaterials.pNext = nullptr;
 
         // TODO: add sampling
-        std::array<VkWriteDescriptorSet, 8> descriptorWrites;
+        std::array<VkWriteDescriptorSet, 9> descriptorWrites;
 
         descriptorWrites[0] = writeAccelStr;
         descriptorWrites[1] = writeStorageImage;
@@ -1394,6 +1461,7 @@ void Renderer::createDescriptorSet_RT() {
         descriptorWrites[5] = writeStorageHitIndex;
         descriptorWrites[6] = writeStorageHitOffsets;
         descriptorWrites[7] = writeTextures;
+        descriptorWrites[8] = writeMaterials;
 
         vkUpdateDescriptorSets(
             device,
@@ -1418,7 +1486,8 @@ void Renderer::createDescriptorSetLayout_RT() {
         { 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}, // vertex
         { 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}, // index
         {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
-        { 7, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}
+        { 7, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, NUM_TEXTURES, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
+        {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}
     };
 
     VkDescriptorSetLayoutCreateInfo layoutCreateInfo{};
@@ -1442,7 +1511,8 @@ void Renderer::createDescriptorPool_RT() {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_FRAMES_IN_FLIGHT}
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_FRAMES_IN_FLIGHT * NUM_TEXTURES},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT}
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -1772,7 +1842,7 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
         0, 1, descriptorSets.data(),
         0, nullptr);
 
-    vk_device::PushConstants pc{};
+    PushConstants pc{};
 
     glm::mat4 proj = glm::perspective(glm::radians(45.0f),
         swapChainExtent.width / (float) swapChainExtent.height,
@@ -1790,7 +1860,7 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.lightIntensity = 2.0f;
 
     vkCmdPushConstants(cmdBuf, pipelineLayout, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-        0, sizeof(vk_device::PushConstants), &pc);
+        0, sizeof(PushConstants), &pc);
 
     VkStridedDeviceAddressRegionKHR callableSBT{};
     callableSBT.deviceAddress = 0;
@@ -1883,19 +1953,72 @@ void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int heig
 }
 
 void Renderer::createTextureImages() {
-    for (std::string &path : texturePaths) {
-        createTextureImage(path);
-        createTextureImageView(textures.size()-1);
+    for (auto& tinput : textureInputs) {
+        if (textureCache.contains(tinput.path)) continue;
+
+        std::cout << "PATH: " << tinput.path << std::endl;
+        std::string fpath = "teacup/textures/" + tinput.path;
+
+        Texture texture;
+
+        createTextureImage(fpath, texture);
+        std::cout << "IMG Handle: " << texture.image << std::endl;
+        createTextureImageView(texture);
+        std::cout << "IMG View Handle: " << texture.view << std::endl;
+        createTextureSampler(texture);
+
+        textures.emplace_back(texture);
+        textureCache.insert({tinput.path, textures.size()-1});
     }
+
+    NUM_TEXTURES = textures.size();
 }
 
-void Renderer::createTextureImage(std::string& fpath) {
+void Renderer::createMaterialBuffer() {
+    std::byte *materialData = reinterpret_cast<std::byte*>(materials.data());
+    const size_t materialSize = materials.size() * sizeof(Material);
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(materialSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory);
+
+    void* stagingData;
+    vkMapMemory(device, stagingBufferMemory, 0, materialSize, 0, &stagingData);
+    memcpy(stagingData, materialData, materialSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(
+            materialSize,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            materialBuffer,
+            materialBufferMemory
+            );
+
+    copyBuffer(stagingBuffer, materialBuffer, materialSize);
+
+    VkBufferDeviceAddressInfo addrInfo{};
+    addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    addrInfo.buffer = materialBuffer;
+    materialBufferAddress= pfnGetBufferDeviceAddressKHR(device, &addrInfo);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+
+void Renderer::createTextureImage(std::string& fpath, Texture& texture) {
     int texW, texH, texChannels;
-    std::string fullPath = "textures/" + fpath;
+    std::string fullPath = fpath;
     stbi_uc *pixels = stbi_load(fullPath.c_str(), &texW, &texH, &texChannels, STBI_rgb_alpha);
     VkDeviceSize imageSize = texW * texH * 4;
-
-    textureData textureData;
 
     if (pixels == nullptr) {
         throw std::runtime_error("failed to load texture image");
@@ -1927,21 +2050,19 @@ void Renderer::createTextureImage(std::string& fpath) {
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        textureData.image,
-        textureData.memory
+        texture.image,
+        texture.memory
         );
 
-    transitionImageLayout(textureData.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(stagingBuffer, textureData.image, static_cast<uint32_t>(texW), static_cast<uint32_t>(texH));
-    transitionImageLayout(textureData.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(stagingBuffer, texture.image, static_cast<uint32_t>(texW), static_cast<uint32_t>(texH));
+    transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);;
-
-    textures.emplace_back(textureData);
 }
 
-void Renderer::createTextureSampler() {
+void Renderer::createTextureSampler(Texture& texture) {
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
@@ -1961,13 +2082,13 @@ void Renderer::createTextureSampler() {
     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
 
-    if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+    if (vkCreateSampler(device, &samplerInfo, nullptr, &texture.sampler) != VK_SUCCESS) {
         throw std::runtime_error("failed creating texture sampler");
     }
 }
 
-void Renderer::createTextureImageView(size_t index) {
-    textures[index].view = createImageView(textures[index].image, VK_FORMAT_R8G8B8A8_SRGB);
+void Renderer::createTextureImageView(Texture& texture) {
+    texture.view = createImageView(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 VkImageView Renderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
@@ -2315,13 +2436,39 @@ glm::mat4 Renderer::getFinalMatrix_GLTF(tinygltf::Node& node) {
     return T * R * S;
 }
 
+Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat) {
+    Material m{};
 
-void Renderer::loadMeshes_GLTF() {
+    const auto& pbr = mat.pbrMetallicRoughness;
+
+    if (pbr.baseColorTexture.index >= 0) {
+        m.baseColorTexture = pbr.baseColorTexture.index;
+    } else {
+        m.baseColorTexture = -1;
+    }
+
+    if (pbr.baseColorFactor.size() == 4) {
+        m.baseColorFactor = glm::vec4(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
+    }
+
+    m.metallicFactor = pbr.metallicFactor;
+    m.roughnessFactor = pbr.roughnessFactor;
+    m.emissiveFactor = -1;
+
+    m.normalTexture = mat.normalTexture.index;
+    m.occlusionTexture = mat.occlusionTexture.index;
+    m.emissiveTexture = mat.emissiveTexture.index;
+
+    return m;
+}
+TextureInput fetchTextureInfo(const tinygltf::Material& mat);
+
+void Renderer::createScene_GLTF() {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    std::string filename = "meshes/sponza.gltf";
+    std::string filename = "teacup/DiffuseTransmissionTeacup.gltf";
 
     //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
@@ -2350,6 +2497,34 @@ void Renderer::loadMeshes_GLTF() {
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
             auto itVert = primitive.attributes.find("POSITION");
             if (itVert == primitive.attributes.end()) continue;
+
+            int materialIndex = primitive.material;
+            if (materialIndex < 0 ) {
+                materialIndex = 0;
+            }
+            const tinygltf::Material& material = model.materials[materialIndex];
+            const tinygltf::PbrMetallicRoughness& pbr = material.pbrMetallicRoughness;
+            int baseColorTexIndex = pbr.baseColorTexture.index;
+
+            // TODO: account for primitives not having material or textures
+            /*
+            const tinygltf::Texture& texture = model.textures[baseColorTexIndex];
+            const tinygltf::Image& image = model.images[texture.source];
+            const tinygltf::Sampler& sampler = model.samplers[texture.sampler];
+            */
+            Material m = fetchMaterialInfo(material);
+            materials.push_back(m);
+
+
+            for (const auto& texture : model.textures) {
+                const tinygltf::Image& img = model.images[texture.source];
+
+                TextureInput tinput{};
+                tinput.path = img.uri;
+                tinput.sampler = model.samplers[texture.sampler];
+
+                textureInputs.push_back(tinput);
+            }
 
             const tinygltf::Accessor& accessorVert = model.accessors[itVert->second];
             const int accessorIndex = primitive.indices;
@@ -2400,8 +2575,12 @@ void Renderer::loadMeshes_GLTF() {
     for (const tinygltf::Mesh& mesh : model.meshes) {
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
 
+            primitive.material;
+            const tinygltf::Material& mat = model.materials[primitive.material];
+
             auto itPos = primitive.attributes.find("POSITION");
             auto itNormal = primitive.attributes.find("NORMAL");
+            auto itUV = primitive.attributes.find("TEXCOORD0");
 
             auto accessorIndices = primitive.indices;
 
@@ -2419,14 +2598,17 @@ void Renderer::loadMeshes_GLTF() {
             const tinygltf::Accessor& accessorPos = model.accessors[itPos->second];
             const tinygltf::Accessor& accessorNormal = model.accessors[itNormal->second];
             const tinygltf::Accessor& accessorIndex = model.accessors[accessorIndices];
+            const tinygltf::Accessor& accessorUV = model.accessors[itUV->second];
 
             const tinygltf::BufferView& bufferViewPos = model.bufferViews[accessorPos.bufferView];
             const tinygltf::BufferView& bufferViewNormal = model.bufferViews[accessorNormal.bufferView];
             const tinygltf::BufferView& bufferViewIndex = model.bufferViews[accessorIndex.bufferView];
+            const tinygltf::BufferView& bufferViewUV = model.bufferViews[accessorUV.bufferView];
 
             const tinygltf::Buffer& bufferPos = model.buffers[bufferViewPos.buffer];
             const tinygltf::Buffer& bufferNormal = model.buffers[bufferViewNormal.buffer];
             const tinygltf::Buffer& bufferIndex = model.buffers[bufferViewIndex.buffer];
+            const tinygltf::Buffer& bufferUV = model.buffers[bufferViewUV.buffer];
 
             auto* vertices = reinterpret_cast<Vertex*>(vertexArena.data);
             auto* indices = reinterpret_cast<uint32_t*>(indexArena.data);
@@ -2437,12 +2619,13 @@ void Renderer::loadMeshes_GLTF() {
             for (uint32_t v = 0; v < accessorPos.count; v++) {
                 glm::vec3 pos = getVec3FromAccessor(accessorPos, bufferViewPos, bufferPos, v);
                 glm::vec3 normal = getVec3FromAccessor(accessorNormal, bufferViewNormal, bufferNormal, v);
+                glm::vec2 uv = getVec2FromAccessor(accessorUV, bufferViewUV, bufferUV, v);
 
                 Vertex vert{};
                 vert.pos = pos;
                 vert.normal = normal;
                 vert.color = glm::vec3(1);
-                vert.tex = glm::vec2(0);
+                vert.texture = uv;
 
                 vertices[baseVertex + v] = vert;
             }
@@ -2486,6 +2669,26 @@ glm::vec3 Renderer::getVec3FromAccessor(const tinygltf::Accessor &accessor, cons
     const auto* vector = reinterpret_cast<const float*>(basePtr + index * byteStride);
 
     return glm::vec3(vector[0], vector[1], vector[2]);
+}
+
+glm::vec2 Renderer::getVec2FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView &bufferView,
+    const tinygltf::Buffer &buffer, const size_t index) {
+
+    size_t componentSize = tinygltf::GetComponentSizeInBytes(accessor.componentType);
+    size_t numComponents = tinygltf::GetNumComponentsInType(accessor.type);
+
+    size_t byteStride = bufferView.byteStride;
+    if (byteStride == 0) {
+        byteStride = componentSize * numComponents;
+    }
+
+    const auto* bufData = reinterpret_cast<const std::byte*>(buffer.data.data());
+
+    const std::byte* basePtr = bufData + bufferView.byteOffset + accessor.byteOffset;
+
+    const auto* vector = reinterpret_cast<const float*>(basePtr + index * byteStride);
+
+    return glm::vec2(vector[0], vector[1]);
 }
 
 uint32_t Renderer::getIndexFromAccessor(const tinygltf::Accessor &accessor, const tinygltf::BufferView &bufferView,
@@ -2555,7 +2758,8 @@ void Renderer::createTopLevelAccelerationStructure() {
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         blasAddressInfo.accelerationStructure = blas.handle;
         instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
-        instance.instanceCustomIndex = static_cast<uint32_t>(i);
+        //instance.instanceCustomIndex = static_cast<uint32_t>(i);
+        instance.instanceCustomIndex =
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
         tlasInstances.push_back(instance);

@@ -8,6 +8,7 @@
 #include "camera.h"
 #include "tlas.h"
 #include "blas.h"
+#include "host_device.h"
 
 #include <vector>
 #include <fstream>
@@ -46,11 +47,32 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct textureData {
+struct Texture {
     VkImage image;
     VkImageView view;
     VkDeviceMemory memory;
+    VkSampler sampler;
 };
+
+struct TextureInput {
+    std::string path;
+    tinygltf::Sampler sampler;
+};
+
+/*
+struct Material {
+    uint32_t baseColorTexture;
+    uint32_t normalTexture;
+    uint32_t metallicRoughnessTexture;
+    uint32_t occlusionTexture;
+    uint32_t emissiveTexture;
+
+    glm::vec4 baseColorFactor;
+    uint32_t emissiveFactor;
+    uint32_t metallicFactor;
+    uint32_t roughnessFactor;
+};
+*/
 
 typedef enum RenderingMode {
     RENDERING_MODE_RAY_TRACING = 1,
@@ -126,6 +148,10 @@ private:
     VkDeviceMemory offsetBufferMemory;
     VkDeviceAddress offsetBufferAddress;
 
+    VkBuffer materialBuffer;
+    VkDeviceMemory materialBufferMemory;
+    VkDeviceAddress materialBufferAddress;
+
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
@@ -157,8 +183,11 @@ private:
 
     Tlas tlas;
 
-    std::vector<textureData> textures;
-    VkSampler textureSampler;
+    std::vector<Material> materials;
+
+    std::vector<TextureInput> textureInputs;
+    std::unordered_map<std::string, uint32_t> textureCache;
+    std::vector<Texture> textures;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -274,10 +303,12 @@ private:
 
     void createSyncObjects();
 
-    void createTextureImage(std::string& fpath);
+    void createTextureImage(std::string& fpath, Texture& texture);
     void createTextureImages();
-    void createTextureSampler();
-    void createTextureImageView(size_t index);
+    void createTextureSampler(Texture& texture);
+    void createTextureImageView(Texture& texture);
+
+    void createMaterialBuffer();
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
     void createImage(
@@ -310,13 +341,18 @@ private:
     void createTopLevelAccelerationStructure();
     static glm::mat3x4 createTopLevelTransformMatrix(glm::vec3 pos);
 
-    void loadMeshes_OBJ();
-    void loadMeshes_GLTF();
-    glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
-    uint32_t getIndexFromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+    void createScene_GLTF();
+    Material fetchMaterialInfo(const tinygltf::Material& mat);
+    TextureInput fetchTextureInfo(const tinygltf::Material& Material);
+
+    static glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+    static glm::vec2 getVec2FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView &bufferView, const tinygltf::Buffer &buffer, const size_t index);
+    static uint32_t getIndexFromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
+
     void traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
     void traverseNodes_GLTF(tinygltf::Model& model);
     void processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
     glm::mat4 getFinalMatrix_GLTF(tinygltf::Node& node);
+
 };
 
