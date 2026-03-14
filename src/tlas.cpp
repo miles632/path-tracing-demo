@@ -5,6 +5,17 @@
 #include <cstring>
 #include <vulkan/vulkan_core.h>
 
+inline VkTransformMatrixKHR convert3x4GlmToVulkan(glm::mat3x4 mat) {
+    VkTransformMatrixKHR result{};
+    for (int row = 0; row < 3; row++) {
+        for (int col = 0; col < 4; col++) {
+            result.matrix[row][col] = mat[row][col];
+        }
+    }
+
+    return result;
+}
+
 void Tlas::create(VkDevice device,
                   const std::vector<TlasInstance>& instances,
                   Renderer& state

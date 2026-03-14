@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vertex.h"
+#include "host_device.h"
 
 struct Renderer; //forward declaration
 
@@ -13,6 +13,7 @@ struct BlasInput {
 
     size_t vertexOffset;
     size_t indexOffset;
+
 
     VkFormat vertexFormat;
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
