@@ -123,9 +123,6 @@ void Renderer::initVulkan() {
     std::cout << "[Init] Building TLAS\n";
     createTopLevelAccelerationStructure();
 
-    std::cout << "[Init] Creating texture images\n";
-    createTextureImages();
-
     std::cout << "[Init] Creating descriptor set layout\n";
     createDescriptorSetLayout_RT();
 
@@ -1433,6 +1430,7 @@ void Renderer::createDescriptorSet_RT() {
         writeTextures.dstSet = descriptorSets[i];
         writeTextures.dstBinding = 7;
         //writeTextures.descriptorCount = static_cast<uint32_t>(textureImgInfos.size());
+        assert(textureImgInfos.size() == NUM_TEXTURES);
         writeTextures.descriptorCount = NUM_TEXTURES;
         writeTextures.dstArrayElement = 0;
         writeTextures.pImageInfo = textureImgInfos.data();
@@ -1854,10 +1852,13 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.viewInverse = glm::inverse(camera.getViewMatrix());
     pc.projInverse = glm::inverse(proj);
     pc.cameraPos = camera.pos;
+
     pc.frameIndex = imageIndex;
     pc.clearColor = glm::vec4(135/255.0f,  206/255.0f, 235/255.0f, 1.0f);
     pc.frameCount = frameCount;
     pc.lightIntensity = 2.0f;
+    pc.textureCount = NUM_TEXTURES;
+    //std::cout << "NUM_TEXTURES: " << NUM_TEXTURES << std::endl;
 
     vkCmdPushConstants(cmdBuf, pipelineLayout, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
         0, sizeof(PushConstants), &pc);
@@ -1950,28 +1951,6 @@ void Renderer::createSyncObjects() {
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
-}
-
-void Renderer::createTextureImages() {
-    for (auto& tinput : textureInputs) {
-        if (textureCache.contains(tinput.path)) continue;
-
-        std::cout << "PATH: " << tinput.path << std::endl;
-        std::string fpath = "teacup/textures/" + tinput.path;
-
-        Texture texture;
-
-        createTextureImage(fpath, texture);
-        std::cout << "IMG Handle: " << texture.image << std::endl;
-        createTextureImageView(texture);
-        std::cout << "IMG View Handle: " << texture.view << std::endl;
-        createTextureSampler(texture);
-
-        textures.emplace_back(texture);
-        textureCache.insert({tinput.path, textures.size()-1});
-    }
-
-    NUM_TEXTURES = textures.size();
 }
 
 void Renderer::createMaterialBuffer() {
@@ -2436,16 +2415,29 @@ glm::mat4 Renderer::getFinalMatrix_GLTF(tinygltf::Node& node) {
     return T * R * S;
 }
 
-Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat) {
+Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::vector<int>& map) {
     Material m{};
+    m.baseColorTexture = -1;
+    m.normalTexture = -1;
+    m.metallicRoughnessTexture = -1;
+    m.occlusionTexture = -1;
+    m.emissiveTexture = -1;
+
+    m.baseColorFactor = glm::vec4(1.0f);
+    m.emissiveFactor = glm::vec4(0.0f);
+
+    m.metallicFactor = 1.0f;
+    m.roughnessFactor = 1.0f;
 
     const auto& pbr = mat.pbrMetallicRoughness;
 
     if (pbr.baseColorTexture.index >= 0) {
-        m.baseColorTexture = pbr.baseColorTexture.index;
+        m.baseColorTexture = map[pbr.baseColorTexture.index];
     } else {
         m.baseColorTexture = -1;
     }
+
+    std::cout << "BASE COLOR TEXTURE: " << m.baseColorTexture << std::endl;
 
     if (pbr.baseColorFactor.size() == 4) {
         m.baseColorFactor = glm::vec4(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
@@ -2453,22 +2445,23 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat) {
 
     m.metallicFactor = pbr.metallicFactor;
     m.roughnessFactor = pbr.roughnessFactor;
-    m.emissiveFactor = -1;
 
-    m.normalTexture = mat.normalTexture.index;
-    m.occlusionTexture = mat.occlusionTexture.index;
-    m.emissiveTexture = mat.emissiveTexture.index;
+    m.normalTexture = mat.normalTexture.index >= 0 ? map[mat.normalTexture.index] : -1;
+    m.occlusionTexture = mat.occlusionTexture.index >= 0 ? map[mat.occlusionTexture.index] : -1;
+    m.emissiveTexture = mat.emissiveTexture.index >= 0 ? map[mat.emissiveTexture.index] : -1;
 
     return m;
 }
-TextureInput fetchTextureInfo(const tinygltf::Material& mat);
 
 void Renderer::createScene_GLTF() {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    std::string filename = "teacup/DiffuseTransmissionTeacup.gltf";
+    //std::string filename = "avocado/Avocado.gltf";
+    std::string filename = "Sponza/glTF/Sponza.gltf";
+    //std::string filename = "Cesium/CesiumMan.gltf";
+    //std::string filename = "teacup/DiffuseTransmissionTeacup.gltf";
 
     //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
@@ -2485,9 +2478,44 @@ void Renderer::createScene_GLTF() {
         printf("Failed to parse glTF: %s\n", filename.c_str());
     }
 
-    std::vector<glm::uvec2> offs;
+    std::vector<glm::uvec4> offs;
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
+
+    std::vector<int> mapGltfTextureToVulkan(model.textures.size(), -1);
+
+    for (size_t texIdx = 0; texIdx < model.textures.size(); ++texIdx) {
+        const tinygltf::Image& img = model.images[model.textures[texIdx].source];
+
+        TextureInput tinput{};
+        tinput.path = img.uri;
+
+        int textureIndex;
+        if (textureCache.contains(tinput.path)) {
+            // reuse existing texture
+            textureIndex = textureCache[tinput.path];
+        } else {
+            // create new texture
+            Texture texture;
+            tinput.path = "Sponza/glTF/" + tinput.path;
+            //tinput.path = "teacup/textures/" + tinput.path;
+            std::cout << tinput.path << std::endl;
+            createTextureImage(tinput.path, texture);
+            createTextureImageView(texture);
+            createTextureSampler(texture);
+
+            textures.push_back(texture);
+            textureIndex = textures.size() - 1;
+            textureCache.insert({tinput.path, textureIndex});
+        }
+
+        mapGltfTextureToVulkan[texIdx] = textureIndex;
+    }
+    NUM_TEXTURES = textures.size();
+
+    for (const tinygltf::Material& m : model.materials) {
+        materials.push_back(fetchMaterialInfo(m, mapGltfTextureToVulkan));
+    }
 
     // retrieve counts
     for (const tinygltf::Mesh& mesh : model.meshes) {
@@ -2501,29 +2529,6 @@ void Renderer::createScene_GLTF() {
             int materialIndex = primitive.material;
             if (materialIndex < 0 ) {
                 materialIndex = 0;
-            }
-            const tinygltf::Material& material = model.materials[materialIndex];
-            const tinygltf::PbrMetallicRoughness& pbr = material.pbrMetallicRoughness;
-            int baseColorTexIndex = pbr.baseColorTexture.index;
-
-            // TODO: account for primitives not having material or textures
-            /*
-            const tinygltf::Texture& texture = model.textures[baseColorTexIndex];
-            const tinygltf::Image& image = model.images[texture.source];
-            const tinygltf::Sampler& sampler = model.samplers[texture.sampler];
-            */
-            Material m = fetchMaterialInfo(material);
-            materials.push_back(m);
-
-
-            for (const auto& texture : model.textures) {
-                const tinygltf::Image& img = model.images[texture.source];
-
-                TextureInput tinput{};
-                tinput.path = img.uri;
-                tinput.sampler = model.samplers[texture.sampler];
-
-                textureInputs.push_back(tinput);
             }
 
             const tinygltf::Accessor& accessorVert = model.accessors[itVert->second];
@@ -2541,7 +2546,8 @@ void Renderer::createScene_GLTF() {
 
             indexCount += localIndexCount;
 
-            offs.push_back(glm::uvec2(baseVertex, baseIndex));
+            //offs.push_back(glm::uvec4(baseVertex, baseIndex, materialIndex, 0));
+            offs.push_back(glm::uvec4(baseVertex, baseIndex, materialIndex, 1.0f));
 
             PrimitiveInfo pi;
             pi.blas.vertexCount = localVertexCount;
@@ -2558,7 +2564,7 @@ void Renderer::createScene_GLTF() {
 
     arenaInit(&vertexArena, vertexCount * sizeof(Vertex));
     arenaInit(&indexArena, indexCount * sizeof(INDEX_TYPE));
-    arenaInit(&offsetArena, offs.size() * sizeof(glm::uvec2));
+    arenaInit(&offsetArena, offs.size() * sizeof(glm::uvec4));
 
     assert(vertexArena.capacity != 0);
     assert(indexArena.capacity != 0);
@@ -2566,9 +2572,9 @@ void Renderer::createScene_GLTF() {
 
     arenaAlloc(&vertexArena, vertexCount * sizeof(Vertex));
     arenaAlloc(&indexArena, indexCount * sizeof(INDEX_TYPE));
-    arenaAlloc(&offsetArena, offs.size() * sizeof(glm::uvec2));
+    arenaAlloc(&offsetArena, offs.size() * sizeof(glm::uvec4));
 
-    memcpy(offsetArena.data, offs.data(), offs.size() * sizeof(glm::uvec2));
+    memcpy(offsetArena.data, offs.data(), offs.size() * sizeof(glm::uvec4));
 
     // write to arenas
     uint32_t primitiveCount = 0;
@@ -2580,7 +2586,13 @@ void Renderer::createScene_GLTF() {
 
             auto itPos = primitive.attributes.find("POSITION");
             auto itNormal = primitive.attributes.find("NORMAL");
-            auto itUV = primitive.attributes.find("TEXCOORD0");
+
+            std::map<std::string, int>::const_iterator itUV;
+            if (mat.pbrMetallicRoughness.baseColorTexture.texCoord == 0) {
+                itUV = primitive.attributes.find("TEXCOORD_0");
+            } else if (mat.pbrMetallicRoughness.baseColorTexture.texCoord == 1) {
+                itUV = primitive.attributes.find("TEXCOORD_1");
+            }
 
             auto accessorIndices = primitive.indices;
 
@@ -2752,14 +2764,12 @@ void Renderer::createTopLevelAccelerationStructure() {
         glm::mat3x4 m3x4(inst.transform);
 
         instance.transform = m3x4;
-        //instance.transform = glm::mat4(1.0f);
 
         VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         blasAddressInfo.accelerationStructure = blas.handle;
         instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
-        //instance.instanceCustomIndex = static_cast<uint32_t>(i);
-        instance.instanceCustomIndex =
+        instance.instanceCustomIndex = inst.primitiveIndex;
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
         tlasInstances.push_back(instance);

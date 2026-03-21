@@ -59,21 +59,6 @@ struct TextureInput {
     tinygltf::Sampler sampler;
 };
 
-/*
-struct Material {
-    uint32_t baseColorTexture;
-    uint32_t normalTexture;
-    uint32_t metallicRoughnessTexture;
-    uint32_t occlusionTexture;
-    uint32_t emissiveTexture;
-
-    glm::vec4 baseColorFactor;
-    uint32_t emissiveFactor;
-    uint32_t metallicFactor;
-    uint32_t roughnessFactor;
-};
-*/
-
 typedef enum RenderingMode {
     RENDERING_MODE_RAY_TRACING = 1,
     RENDERING_MODE_RASTERISATION, // TODO: in the future
@@ -169,7 +154,6 @@ private:
     std::vector<size_t> vertexCounts;
     std::vector<size_t> indexCounts;
 
-    //std::vector<DrawCommand> drawCommands;
     std::vector<PrimitiveInfo> primitiveInfos;
     std::vector<SceneInstance> sceneInstances;
     std::vector<MeshInfo> meshInfos;
@@ -342,8 +326,7 @@ private:
     static glm::mat3x4 createTopLevelTransformMatrix(glm::vec3 pos);
 
     void createScene_GLTF();
-    Material fetchMaterialInfo(const tinygltf::Material& mat);
-    TextureInput fetchTextureInfo(const tinygltf::Material& Material);
+    Material fetchMaterialInfo(const tinygltf::Material& mat, const std::vector<int>& map);
 
     static glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
     static glm::vec2 getVec2FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView &bufferView, const tinygltf::Buffer &buffer, const size_t index);
