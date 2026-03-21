@@ -28,16 +28,16 @@ struct Vertex {
 };
 
 struct Material {
-    UINT32 baseColorTexture;
-    UINT32 normalTexture;
-    UINT32 metallicRoughnessTexture;
-    UINT32 occlusionTexture;
-    UINT32 emissiveTexture;
+    int baseColorTexture;
+    int normalTexture;
+    int metallicRoughnessTexture;
+    int occlusionTexture;
+    int emissiveTexture;
 
     VEC4 baseColorFactor;
-    UINT32 emissiveFactor;
-    UINT32 metallicFactor;
-    UINT32 roughnessFactor;
+    VEC4 emissiveFactor;
+    float metallicFactor;
+    float roughnessFactor;
 };
 
 struct PushConstants {
@@ -46,10 +46,11 @@ struct PushConstants {
     VEC3 cameraPos;
     UINT32 frameIndex;
     VEC4 clearColor;
-    VEC3 lightPos;
+    VEC4 lightPos;
     float lightIntensity;
     int lightType;
     UINT32 frameCount;
+    UINT32 textureCount;
 };
 
 struct UniformBufferObject {
