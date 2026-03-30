@@ -45,7 +45,7 @@ void main() {
 
         vec4 origin = pc.viewInverse * vec4(offset, 0.0, 1.0);
 
-        const int MAX_BOUNCES = 3;
+        const int MAX_BOUNCES = 7;
         vec3 throughput = vec3(1.0);
 
         for (int bounce = 0; bounce <= MAX_BOUNCES; ++bounce) {

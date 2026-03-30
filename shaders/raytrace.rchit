@@ -70,29 +70,36 @@ void main() {
         )
     );
 
-
     mat3 normalMatrix = transpose(inverse(mat3(gl_ObjectToWorldEXT)));
     vec3 worldNormal = normalize(normalMatrix * normal);
+    if (dot(worldNormal, gl_WorldRayDirectionEXT) > 0.0) {
+        worldNormal = -worldNormal;
+    }
 
     //not rendering any textures atm
     vec2 uv = v0.texture * barycentrics.x + v1.texture * barycentrics.y + v2.texture * barycentrics.z;
 
 
 
-    vec3 color = vec3(1.0);
+    vec3 color = mat.baseColorFactor.xyz;
     if (mat.baseColorTexture > -1 && mat.baseColorTexture < pc.textureCount ) {
         color = texture(DiffuseTex[nonuniformEXT(mat.baseColorTexture)], uv).rgb;
     }
     if (mat.normalTexture > -1) {
-        // ignore 4 now
+        // skip 4 now
     }
     vec4 emissive = mat.emissiveFactor;
     if (mat.emissiveTexture > -1) {
-
+        // skip 4 now
     }
 
-    payload.ColorAndDistance = vec4(color, 1);
+    vec3 reflected = reflect(gl_WorldRayDirectionEXT, worldNormal);
 
-    //payload = scatterSpecular(worldNormal, gl_WorldRayDirectionEXT, gl_HitTEXT, payload.RandomSeed, color);
-    //payload.ColorAndDistance = vec4((worldNormal * 0.5 + 0.5), 1.0);
+    // visualize reflected direction
+    payload.ColorAndDistance = vec4(reflected * 0.5 + 0.5, gl_HitTEXT);
+    payload.ScatterDir = vec4(0.0);
+
+    hitPayload reflectedColor = scatter(worldNormal, gl_WorldRayDirectionEXT, gl_HitTEXT, payload.RandomSeed, color, mat.metallicFactor, mat.roughnessFactor, pc.clearColor);
+    payload = reflectedColor;
+
 }
