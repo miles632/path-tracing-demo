@@ -28,16 +28,19 @@ struct Vertex {
 };
 
 struct Material {
+    VEC4 emissiveFactor;
+    VEC4 baseColorFactor;
+
     int baseColorTexture;
     int normalTexture;
     int metallicRoughnessTexture;
     int occlusionTexture;
     int emissiveTexture;
 
-    VEC4 baseColorFactor;
-    VEC4 emissiveFactor;
     float metallicFactor;
     float roughnessFactor;
+
+    float _pad;
 };
 
 struct PushConstants {

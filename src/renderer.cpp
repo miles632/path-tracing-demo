@@ -815,15 +815,21 @@ void Renderer::createLogicalDevice() {
     features2.features.sampleRateShading = VK_TRUE;
     features2.pNext = &bufferAddressFeatures;
 
+    /*
+    VkPhysicalDeviceVulkan12Features features12{};
+    features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    features12.runtimeDescriptorArray = VK_TRUE;
+    features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    features12.bufferDeviceAddress = VK_TRUE;
+    features12.pNext = &features2;
+    */
+
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
-
     createInfo.pNext = &features2;
     createInfo.pEnabledFeatures = nullptr;
-
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
@@ -1854,7 +1860,7 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.cameraPos = camera.pos;
 
     pc.frameIndex = imageIndex;
-    pc.clearColor = glm::vec4(135/255.0f,  206/255.0f, 235/255.0f, 1.0f);
+    pc.clearColor = glm::vec4(255.0f/255.0f,  248.0f/255.0f, 240.0f/255.0f, 1.0f);
     pc.frameCount = frameCount;
     pc.lightIntensity = 2.0f;
     pc.textureCount = NUM_TEXTURES;
@@ -2373,6 +2379,7 @@ void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, gl
         tinygltf::Mesh& mesh = model.meshes[node.mesh];
 
         MeshInfo& mInfo = meshInfos[node.mesh];
+
         for (uint32_t i = 0; i < mInfo.primitiveCount; i++) {
             PrimitiveInfo& pi = primitiveInfos[mInfo.firstPrimitive + i];
 
@@ -2450,6 +2457,8 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
     m.occlusionTexture = mat.occlusionTexture.index >= 0 ? map[mat.occlusionTexture.index] : -1;
     m.emissiveTexture = mat.emissiveTexture.index >= 0 ? map[mat.emissiveTexture.index] : -1;
 
+    std::cout << "metallic: " << m.metallicFactor << " roughness: " << m.roughnessFactor << std::endl;
+
     return m;
 }
 
@@ -2458,24 +2467,24 @@ void Renderer::createScene_GLTF() {
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    //std::string filename = "avocado/Avocado.gltf";
-    std::string filename = "Sponza/glTF/Sponza.gltf";
-    //std::string filename = "Cesium/CesiumMan.gltf";
+    //std::string filename = "Sponza/glTF/Sponza.gltf";
+    std::string filename = "sphereTest/spheres.gltf";
     //std::string filename = "teacup/DiffuseTransmissionTeacup.gltf";
+    //std::string filename = "cornell_box-_original/scene.gltf";
 
     //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
 
     if (!warn.empty()) {
-        printf("Warn: %s\n", warn.c_str());
+        throw std::runtime_error("Warn: " + warn);
     }
 
     if (!err.empty()) {
-        printf("Err: %s\n", err.c_str());
+        throw std::runtime_error("Err: " + err);
     }
 
     if (!ret) {
-        printf("Failed to parse glTF: %s\n", filename.c_str());
+        throw std::runtime_error("Failed to parse glTF: " + filename);
     }
 
     std::vector<glm::uvec4> offs;
@@ -2485,10 +2494,27 @@ void Renderer::createScene_GLTF() {
     std::vector<int> mapGltfTextureToVulkan(model.textures.size(), -1);
 
     for (size_t texIdx = 0; texIdx < model.textures.size(); ++texIdx) {
-        const tinygltf::Image& img = model.images[model.textures[texIdx].source];
+        int source = model.textures[texIdx].source;
+
+        // no image attached
+        if (source < 0 || source >= model.images.size()) {
+            mapGltfTextureToVulkan[texIdx] = -1;
+            continue;
+        }
+
+        const tinygltf::Image& img = model.images[source];
 
         TextureInput tinput{};
-        tinput.path = img.uri;
+        //std::string path = "niagara_bistro-master/" + img.uri;
+        //std::string path = "Sponza/glTF/" + img.uri;
+        std::string path = "sphereTest/" + img.uri;
+        //std::string path = "cornell_box-_original/" + img.uri;
+        tinput.path = path;
+
+        if (img.uri.empty()) {
+            mapGltfTextureToVulkan[texIdx] = -1;
+            continue;
+        }
 
         int textureIndex;
         if (textureCache.contains(tinput.path)) {
@@ -2497,8 +2523,6 @@ void Renderer::createScene_GLTF() {
         } else {
             // create new texture
             Texture texture;
-            tinput.path = "Sponza/glTF/" + tinput.path;
-            //tinput.path = "teacup/textures/" + tinput.path;
             std::cout << tinput.path << std::endl;
             createTextureImage(tinput.path, texture);
             createTextureImageView(texture);
@@ -2594,6 +2618,8 @@ void Renderer::createScene_GLTF() {
                 itUV = primitive.attributes.find("TEXCOORD_1");
             }
 
+            auto itColor = primitive.attributes.find("COLOR_0");
+
             auto accessorIndices = primitive.indices;
 
             if (itPos == primitive.attributes.end()) {
@@ -2607,20 +2633,31 @@ void Renderer::createScene_GLTF() {
                 // compute normals  ....
             }
 
+            const bool hasColor = (itColor != primitive.attributes.end());
+
             const tinygltf::Accessor& accessorPos = model.accessors[itPos->second];
             const tinygltf::Accessor& accessorNormal = model.accessors[itNormal->second];
             const tinygltf::Accessor& accessorIndex = model.accessors[accessorIndices];
             const tinygltf::Accessor& accessorUV = model.accessors[itUV->second];
+            const tinygltf::Accessor* accessorColor = nullptr;
 
             const tinygltf::BufferView& bufferViewPos = model.bufferViews[accessorPos.bufferView];
             const tinygltf::BufferView& bufferViewNormal = model.bufferViews[accessorNormal.bufferView];
             const tinygltf::BufferView& bufferViewIndex = model.bufferViews[accessorIndex.bufferView];
             const tinygltf::BufferView& bufferViewUV = model.bufferViews[accessorUV.bufferView];
+            const tinygltf::BufferView* bufferViewColor = nullptr;
 
             const tinygltf::Buffer& bufferPos = model.buffers[bufferViewPos.buffer];
             const tinygltf::Buffer& bufferNormal = model.buffers[bufferViewNormal.buffer];
             const tinygltf::Buffer& bufferIndex = model.buffers[bufferViewIndex.buffer];
             const tinygltf::Buffer& bufferUV = model.buffers[bufferViewUV.buffer];
+            const tinygltf::Buffer* bufferColor = nullptr;
+
+            if (hasColor) {
+                accessorColor = &model.accessors[itColor->second];
+                bufferViewColor = &model.bufferViews[accessorColor->bufferView];
+                bufferColor = &model.buffers[bufferViewColor->buffer];
+            };
 
             auto* vertices = reinterpret_cast<Vertex*>(vertexArena.data);
             auto* indices = reinterpret_cast<uint32_t*>(indexArena.data);
@@ -2632,11 +2669,11 @@ void Renderer::createScene_GLTF() {
                 glm::vec3 pos = getVec3FromAccessor(accessorPos, bufferViewPos, bufferPos, v);
                 glm::vec3 normal = getVec3FromAccessor(accessorNormal, bufferViewNormal, bufferNormal, v);
                 glm::vec2 uv = getVec2FromAccessor(accessorUV, bufferViewUV, bufferUV, v);
-
+                glm::vec3 color = hasColor ? getVec3FromAccessor(*accessorColor, *bufferViewColor, *bufferColor, v) : glm::vec3(1.0f);
                 Vertex vert{};
                 vert.pos = pos;
                 vert.normal = normal;
-                vert.color = glm::vec3(1);
+                vert.color = color;
                 vert.texture = uv;
 
                 vertices[baseVertex + v] = vert;
@@ -2762,8 +2799,11 @@ void Renderer::createTopLevelAccelerationStructure() {
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         glm::mat4 m4 = inst.transform;
         glm::mat3x4 m3x4(inst.transform);
-
         instance.transform = m3x4;
+
+        bool flipped = glm::determinant(m4) < 0.0f;
+        if (flipped) instance.flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
+
 
         VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
