@@ -1860,11 +1860,11 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.cameraPos = camera.pos;
 
     pc.frameIndex = imageIndex;
-    pc.clearColor = glm::vec4(255.0f/255.0f,  248.0f/255.0f, 240.0f/255.0f, 1.0f);
+    pc.clearColor = glm::vec4(255.0f/255.0f,  244.0f/255.0f, 229.0f/255.0f, 1.0f);
+    //pc.clearColor = glm::vec4(45.0f/255.0f,  56.0f/255.0f, 58.0f/255.0f, 1.0f);
     pc.frameCount = frameCount;
     pc.lightIntensity = 2.0f;
     pc.textureCount = NUM_TEXTURES;
-    //std::cout << "NUM_TEXTURES: " << NUM_TEXTURES << std::endl;
 
     vkCmdPushConstants(cmdBuf, pipelineLayout, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
         0, sizeof(PushConstants), &pc);
@@ -2433,8 +2433,6 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
     m.baseColorFactor = glm::vec4(1.0f);
     m.emissiveFactor = glm::vec4(0.0f);
 
-    m.metallicFactor = 1.0f;
-    m.roughnessFactor = 1.0f;
 
     const auto& pbr = mat.pbrMetallicRoughness;
 
@@ -2444,8 +2442,6 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
         m.baseColorTexture = -1;
     }
 
-    std::cout << "BASE COLOR TEXTURE: " << m.baseColorTexture << std::endl;
-
     if (pbr.baseColorFactor.size() == 4) {
         m.baseColorFactor = glm::vec4(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
     }
@@ -2453,11 +2449,23 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
     m.metallicFactor = pbr.metallicFactor;
     m.roughnessFactor = pbr.roughnessFactor;
 
+    if (mat.emissiveFactor.size() == 3) {
+        m.emissiveFactor = glm::vec4((float)mat.emissiveFactor[0], (float)mat.emissiveFactor[1], (float)mat.emissiveFactor[2], 0.0f);
+    }
+
+    float transmissionFactor = 0.0f;
+    if (mat.extensions.count("KHR_materials_transmission")) {
+        auto &ext = mat.extensions.at("KHR_materials_transmission");
+        transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").GetNumberAsDouble());
+    }
+
+    std::cout << "Transmissionfactor: " << transmissionFactor << std::endl;
+
+    m.transmissionFactor = transmissionFactor;
+
     m.normalTexture = mat.normalTexture.index >= 0 ? map[mat.normalTexture.index] : -1;
     m.occlusionTexture = mat.occlusionTexture.index >= 0 ? map[mat.occlusionTexture.index] : -1;
     m.emissiveTexture = mat.emissiveTexture.index >= 0 ? map[mat.emissiveTexture.index] : -1;
-
-    std::cout << "metallic: " << m.metallicFactor << " roughness: " << m.roughnessFactor << std::endl;
 
     return m;
 }
@@ -2468,9 +2476,9 @@ void Renderer::createScene_GLTF() {
     std::string err;
     std::string warn;
     //std::string filename = "Sponza/glTF/Sponza.gltf";
-    std::string filename = "sphereTest/spheres.gltf";
-    //std::string filename = "teacup/DiffuseTransmissionTeacup.gltf";
+    //std::string filename = "sphereTest/spheres.gltf";
     //std::string filename = "cornell_box-_original/scene.gltf";
+    std::string filename = "dragon/DragonAttenuation.gltf";
 
     //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
@@ -2505,9 +2513,9 @@ void Renderer::createScene_GLTF() {
         const tinygltf::Image& img = model.images[source];
 
         TextureInput tinput{};
-        //std::string path = "niagara_bistro-master/" + img.uri;
+        std::string path = "dragon/" + img.uri;
         //std::string path = "Sponza/glTF/" + img.uri;
-        std::string path = "sphereTest/" + img.uri;
+        //std::string path = "sphereTest/" + img.uri;
         //std::string path = "cornell_box-_original/" + img.uri;
         tinput.path = path;
 

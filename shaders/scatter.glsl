@@ -3,26 +3,35 @@
 #include "raycommon.glsl"
 #include "random.glsl"
 
-hitPayload scatter(vec3 normal, vec3 rayDir, const float t, inout uint seed, vec3 color, const float metallicW, const float roughness, vec4 clearColor) {
-    const float fuzz = roughness*roughness;
-
-    const float lambertW = 1.0 - metallicW;
-    const float dielectricW = 0.0;
-
-    const float sumW = metallicW + lambertW + dielectricW + 1e-6f;
-    const vec3 normW = vec3(metallicW / sumW, lambertW / sumW, dielectricW / sumW);
-
+hitPayload scatter(vec3 normal, vec3 rayDir, const float t, inout uint seed,
+                   vec3 color, const float metallicW, const float roughness, const float dielectricW, const float eta) {
+    const float fuzz = clamp(roughness * roughness, 0.0, 1.0);
     const vec3 rand3 = randomUnitInSphere(seed);
 
-    const vec3 lambertDir = normalize(normal + rand3);
-    const vec3 metalReflection = reflect(rayDir, normal);
-    const vec3 metalDir = normalize(metalReflection + fuzz * rand3);
+    vec3 raw = normal + rand3;
+    const vec3 lambertDir = (dot(raw, raw) < 1e-6) ? normal : normalize(raw);
+    const vec3 metalDir = normalize(reflect(rayDir, normal) + fuzz * rand3);
 
-    // skipping dielectric
-    const vec3 dir = metalDir * normW.x + lambertDir * normW.y + vec3(0) * normW.z;
+    bool frontFace = dot(rayDir, normal) < 0.0;
+    vec3 n = frontFace ? normal : -normal;
+    float etaRatio = frontFace ? (1.0 / eta) : eta;
+    vec3 refracted = refract(normalize(rayDir), n, etaRatio);
+    float cosTheta = abs(dot(normalize(rayDir), n));
+    vec3 dielectricDir = (length(refracted) < 0.001)
+        ? reflect(rayDir, n)
+        : refracted;
+
+    float r = randomFloat(seed);
+    vec3 dir;
+    if (r < metallicW)
+        dir = metalDir;
+    else if ( r < metallicW + dielectricW)
+        dir = dielectricDir;
+    else
+        dir = lambertDir;
 
     hitPayload payload;
     payload.ColorAndDistance = vec4(color, t);
-    payload.ScatterDir = vec4(normalize(dir), 1.0);
+    payload.ScatterDir = vec4(dir, 1.0);
     return payload;
 }

@@ -30,15 +30,6 @@ layout(binding = 8, scalar) readonly buffer MaterialArray {
     Material m[];
 } materials;
 
-vec3 Mix(vec3 a, vec3 b, vec3 c, vec3 barycentrics)
-{
-    return a * barycentrics.x + b * barycentrics.y + c * barycentrics.z;
-}
-vec2 Mix(vec2 a, vec2 b, vec2 c, vec3 barycentrics)
-{
-    return a * barycentrics.x + b * barycentrics.y + c * barycentrics.z;
-}
-
 Vertex UnpackVertex(uint baseIndex) {
     const uint VERTEX_STRIDE = 11; // 11 floats are stored per vertex
     const uint base = baseIndex * VERTEX_STRIDE;
@@ -65,23 +56,18 @@ void main() {
 
     vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
-    vec3 normal = normalize(Mix(
+    vec3 normal = normalize(mix(
         v0.normal, v1.normal, v2.normal, barycentrics
         )
     );
 
     mat3 normalMatrix = transpose(inverse(mat3(gl_ObjectToWorldEXT)));
     vec3 worldNormal = normalize(normalMatrix * normal);
-    if (dot(worldNormal, gl_WorldRayDirectionEXT) > 0.0) {
-        worldNormal = -worldNormal;
-    }
 
-    //not rendering any textures atm
     vec2 uv = v0.texture * barycentrics.x + v1.texture * barycentrics.y + v2.texture * barycentrics.z;
 
-
-
     vec3 color = mat.baseColorFactor.xyz;
+    //vec3 color = vec3(0.502, 0, 0.502);
     if (mat.baseColorTexture > -1 && mat.baseColorTexture < pc.textureCount ) {
         color = texture(DiffuseTex[nonuniformEXT(mat.baseColorTexture)], uv).rgb;
     }
@@ -89,17 +75,18 @@ void main() {
         // skip 4 now
     }
     vec4 emissive = mat.emissiveFactor;
+
+    if (length(emissive.rgb) > 0.0) {
+        payload.ColorAndDistance = vec4(emissive.rgb, gl_HitTEXT);
+        payload.ScatterDir = vec4(0.0); // terminate
+        return;
+    }
     if (mat.emissiveTexture > -1) {
         // skip 4 now
     }
 
     vec3 reflected = reflect(gl_WorldRayDirectionEXT, worldNormal);
 
-    // visualize reflected direction
-    payload.ColorAndDistance = vec4(reflected * 0.5 + 0.5, gl_HitTEXT);
-    payload.ScatterDir = vec4(0.0);
-
-    hitPayload reflectedColor = scatter(worldNormal, gl_WorldRayDirectionEXT, gl_HitTEXT, payload.RandomSeed, color, mat.metallicFactor, mat.roughnessFactor, pc.clearColor);
-    payload = reflectedColor;
-
+    payload = scatter(worldNormal, gl_WorldRayDirectionEXT, gl_HitTEXT,
+        payload.RandomSeed, color, mat.metallicFactor, mat.roughnessFactor, mat.transmissionFactor, 1.5);
 }

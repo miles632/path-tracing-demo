@@ -39,8 +39,7 @@ struct Material {
 
     float metallicFactor;
     float roughnessFactor;
-
-    float _pad;
+    float transmissionFactor;
 };
 
 struct PushConstants {

@@ -45,7 +45,7 @@ void main() {
 
         vec4 origin = pc.viewInverse * vec4(offset, 0.0, 1.0);
 
-        const int MAX_BOUNCES = 7;
+        const int MAX_BOUNCES = 5;
         vec3 throughput = vec3(1.0);
 
         for (int bounce = 0; bounce <= MAX_BOUNCES; ++bounce) {
@@ -62,7 +62,7 @@ void main() {
 
             traceRayEXT(
                 tlas,
-                gl_RayFlagsOpaqueEXT,
+                gl_RayFlagsNoneEXT,
                 0xFF,
                 0u,    // sbtRecordOffset
                 0u,    // sbtRecordStride
@@ -74,20 +74,21 @@ void main() {
             float t = payload.ColorAndDistance.w;
             bool scattered = payload.ScatterDir.w > 0.0;
 
-            // accumulate contribution from hit
-            throughput *= hitCol;
-
             if (t < 0.0 || !scattered) {
                 // miss or termination
+                pixelColor += throughput * hitCol;
                 break;
             }
+
+            // accumulate contribution from hit
+            throughput *= hitCol;
 
             // advance origin and set the new direction with the scatter
             origin = origin + t * dir;
             dir = normalize(payload.ScatterDir);
         }
 
-        pixelColor += throughput;
+        //pixelColor += throughput;
     }
 
     pixelColor /= float(NUM_SAMPLES); // average the samples for this frame
