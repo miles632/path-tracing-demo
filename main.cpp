@@ -11,11 +11,16 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image/stb_image_write.h"
 
+#include "gui.h"
+
 int main() {
-    Renderer app;
+    auto rd = std::make_unique<Renderer>();
 
     try {
-        app.run();
+        rd->init();
+        GUI gui(&*rd);
+        rd->mainLoop();
+        rd->cleanup();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
 

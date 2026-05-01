@@ -6,6 +6,7 @@
 
 #include "arena.h"
 #include "camera.h"
+#include "gui.h"
 #include "tlas.h"
 #include "blas.h"
 #include "host_device.h"
@@ -59,12 +60,6 @@ struct TextureInput {
     tinygltf::Sampler sampler;
 };
 
-typedef enum RenderingMode {
-    RENDERING_MODE_RAY_TRACING = 1,
-    RENDERING_MODE_RASTERISATION, // TODO: in the future
-    RENDERING_MODE_WIREFRAME,
-} RenderingMode;
-
 struct SceneInstance {
     glm::mat4 transform;
     uint32_t primitiveIndex;
@@ -81,39 +76,31 @@ struct MeshInfo {
 
 class Renderer {
 public:
-    void run() {
+    void init() {
         initWindow();
         initVulkan();
-        mainLoop();
-        cleanup();
     }
 
-private:
-    uint32_t currentFrame = 0;
-
-    GLFWwindow* window;
-
-    VkInstance instance;
+public:
     VkDebugUtilsMessengerEXT debugMessenger;
     VkSurfaceKHR surface;
 
     VkSwapchainKHR swapChain;
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> swapChainImageViews;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
 
-public:
     VkDevice device;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkInstance instance;
+    uint32_t currentFrame = 0;
+    GLFWwindow* window;
 
-private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;
-
+private:
     VkPipelineLayout pipelineLayout;
-    VkRenderPass renderPass;
     VkPipeline graphicsPipeline;
     VkPipelineLayout computePipelineLayout_RT;
     VkPipeline computePipeline_RT;
@@ -141,10 +128,12 @@ private:
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
 
+public:
     VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
 
+private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
@@ -173,11 +162,7 @@ private:
     std::unordered_map<std::string, uint32_t> textureCache;
     std::vector<Texture> textures;
 
-    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-
     bool framebufferResized = false;
-
-    RenderingMode renderingMode = RENDERING_MODE_RAY_TRACING;
 
     Camera camera;
 
@@ -200,17 +185,22 @@ private:
     VkStridedDeviceAddressRegionKHR missRegion{};
     VkStridedDeviceAddressRegionKHR chitRegion{};
 
+public:
+
+    VkRenderPass imguiRenderPass;
+    GUI* guiHandle;
+
+    void initGui();
     void initWindow();
     void initVulkan();
     void mainLoop();
     void drawFrame();
 
-public:
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
-private:
     void cleanup();
+private:
     void createInstance();
 
     static void keyInputCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
@@ -247,6 +237,9 @@ private:
     void createIndexBuffer();
     void createOffsetBuffer();
 
+    void initImguiBackend();
+    void createImguiRenderPass();
+
 public:
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
@@ -262,10 +255,6 @@ private:
 
     void createCamera();
 
-    void createDescriptorPool();
-    void createDescriptorSets();
-    void createDescriptorSetLayout();
-
     void createDescriptorSet_RT();
     void createDescriptorPool_RT();
     void createDescriptorSetLayout_RT();
@@ -274,9 +263,6 @@ private:
 
     VkShaderModule createShaderModule(const std::vector<char>& code);
 
-    void createRenderPass();
-
-    void createFrameBuffers();
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
     void createCommandPool();
@@ -295,17 +281,8 @@ private:
     void createMaterialBuffer();
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
-    void createImage(
-        uint32_t width,
-        uint32_t height,
-        VkSampleCountFlagBits numSamples,
-        VkFormat format,
-        VkImageTiling tiling,
-        VkImageUsageFlags usage,
-        VkMemoryPropertyFlags properties,
-        VkImage& image,
-        VkDeviceMemory& imageMemory
-        );
+    void createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format,
+        VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory );
     void createImageViews();
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
     void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkCommandBuffer cmdBuf = VK_NULL_HANDLE);
@@ -315,7 +292,6 @@ private:
     void createDepthResources();
     VkFormat findDepthFormat();
     bool hasStencilComponent(VkFormat format);
-    VkSampleCountFlagBits getMaxUsableSampleCount();
     void createColorResources();
 
     void createStorageImage_RT();
