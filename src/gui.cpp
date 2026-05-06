@@ -66,13 +66,18 @@ void GUI::createFramebufers(Renderer* rd, uint32_t numFrameBuffers) {
 }
 
 
-void GUI::draw(VkCommandBuffer cmdBuf) {
+void GUI::draw(Renderer* rd, VkCommandBuffer cmdBuf) {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     ImGui::Begin("Test");
-    ImGui::Text("ImGui is working");
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    if (ImGui::Combo("Scene", reinterpret_cast<int*>(&rd->sceneIndex), rd->scenes, IM_COUNTOF(rd->scenes))) {
+        rd->pendingSceneRecreate = true;
+    }
+
+    //ImGui::ShowDemoWindow();
     ImGui::End();
 
     ImGui::Render();

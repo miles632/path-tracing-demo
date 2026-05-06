@@ -23,7 +23,7 @@ void main() {
     payload.RandomSeed = pixelRandomSeed;
 
     vec3 pixelColor = vec3(0.0);
-    const uint NUM_SAMPLES = 32u;
+    const uint NUM_SAMPLES = 8u;
 
     const float aperture = 0.0005;
     const float focusDistance = 0.5;
@@ -93,14 +93,16 @@ void main() {
 
     pixelColor /= float(NUM_SAMPLES); // average the samples for this frame
 
+    ivec2 coord = ivec2(gl_LaunchIDEXT.xy);
+
     const bool accumulate = pc.frameIndex != 0;
-    const vec3 accumulatedColor = (accumulate ? imageLoad(accumulationImage, ivec2(gl_LaunchIDEXT.xy)) : vec4(0)).rgb + pixelColor;
+    const vec3 accumulatedColor = (accumulate ? imageLoad(accumulationImage, coord) : vec4(0)).rgb + pixelColor;
 
     pixelColor = accumulatedColor / float(pc.frameIndex+1);
     pixelColor = sqrt(pixelColor);
 
-    imageStore(accumulationImage, ivec2(gl_LaunchIDEXT.xy), vec4(accumulatedColor, 1.0));
+    imageStore(accumulationImage, coord, vec4(accumulatedColor, 1.0));
     // swizzling here because the swapchain image in vulkan is transitioned to BGRA8
-    imageStore(presentImage, ivec2(gl_LaunchIDEXT.xy), vec4(pixelColor.b, pixelColor.g, pixelColor.r, 1.0));
+    imageStore(presentImage, coord, vec4(pixelColor.b, pixelColor.g, pixelColor.r, 1.0));
 
 }

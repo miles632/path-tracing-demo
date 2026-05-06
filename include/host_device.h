@@ -51,7 +51,6 @@ struct PushConstants {
     VEC4 lightPos;
     float lightIntensity;
     int lightType;
-    UINT32 frameCount;
     UINT32 textureCount;
 };
 

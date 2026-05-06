@@ -18,7 +18,7 @@ public:
     GUI(Renderer* rd);
     void createDescPool(Renderer* rd);
     void createFramebufers(Renderer* rd, uint32_t numFrameBuffers);
-    void draw(VkCommandBuffer cmdBuf);
+    void draw(Renderer* rd, VkCommandBuffer cmdBuf);
 
     VkDescriptorPool descPool;
     std::vector<VkFramebuffer> framebuffers;

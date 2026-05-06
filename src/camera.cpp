@@ -2,27 +2,44 @@
 
 #include <GLFW/glfw3.h>
 
-void Camera::move(float dT) {
-    if (keys[GLFW_KEY_W])
-        pos += speed * front * dT;
-    if (keys[GLFW_KEY_S])
-        pos -= speed * front * dT;
-    if (keys[GLFW_KEY_A])
-        pos -= glm::normalize(glm::cross(front, up)) * speed * dT;
-    if (keys[GLFW_KEY_D])
-        pos += glm::normalize(glm::cross(front, up)) * speed * dT;
+bool Camera::move(float dT) {
+    bool stateChanged = false;
+    auto changeS = [&stateChanged]() {
+        stateChanged = true;
+    };
 
-    if (keys[GLFW_KEY_SPACE])
-        pos += up * speed * dT;
-    if (keys[GLFW_KEY_LEFT_SHIFT])
-        pos -= up * speed * dT;
+    if (keys[GLFW_KEY_W]) {
+        pos += speed * front * dT; changeS();
+    }
+    if (keys[GLFW_KEY_S]) {
+        pos -= speed * front * dT; changeS();
+    }
+    if (keys[GLFW_KEY_A]) {
+        pos -= glm::normalize(glm::cross(front, up)) * speed * dT; changeS();
+    }
+    if (keys[GLFW_KEY_D]) {
+        pos += glm::normalize(glm::cross(front, up)) * speed * dT; changeS();
+    }
+
+    if (keys[GLFW_KEY_SPACE]) {
+        pos += up * speed * dT; changeS();
+    }
+    if (keys[GLFW_KEY_LEFT_SHIFT]) {
+        pos -= up * speed * dT; changeS();
+    }
+
+    return stateChanged;
 }
 
 glm::mat4 Camera::getViewMatrix() const {
     return glm::lookAt(pos, pos + front, up);
 }
 
-void Camera::mouse(float xOffset, float yOffset, float sensitivity) {
+bool Camera::mouse(float xOffset, float yOffset, float sensitivity) {
+    if (xOffset == 0 && yOffset == 0) {
+        return false;
+    }
+
     xOffset *= sensitivity;
     yOffset *= sensitivity;
 
@@ -37,6 +54,8 @@ void Camera::mouse(float xOffset, float yOffset, float sensitivity) {
 
     // recompute the front vector
     updateFront();
+
+    return true;
 }
 
 void Camera::updateFront() {
@@ -49,3 +68,11 @@ void Camera::updateFront() {
     front = glm::normalize(dir);
 }
 
+void Camera::resetCamera() {
+    yaw = -90.0f;
+    pitch = 0.0f;
+
+    pos = {0.0f, 0.0f, 3.0f};
+    front = {0.0f, 0.0f, -1.0f};
+    up = {0.0f, 1.0f, 0.0f};
+}

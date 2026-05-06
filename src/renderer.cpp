@@ -25,6 +25,8 @@
 #include "tiny_gltf.h"
 
 // because the CLion linter doesnt automatically search for includes in /external for whatever reason
+#include <filesystem>
+
 #include "../external/imgui/imgui.h"
 #include "../external/imgui/backends/imgui_impl_vulkan.h"
 #include "../external/imgui/backends/imgui_impl_glfw.h"
@@ -161,12 +163,60 @@ void Renderer::mainLoop() {
 
         glfwPollEvents();
 
-        camera.move(deltaTime);
+        if (pendingSceneRecreate) {
+            recreateScene_GLTF();
+            pendingSceneRecreate = false;
+        }
+
+        if (camera.move(deltaTime)) frameCount = 0;
         drawFrame();
         frameCount++;
     }
 
     vkDeviceWaitIdle(device);
+}
+
+void Renderer::keyInputCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+    Renderer* rd = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
+    if (key >= 0 && key < 1024) {
+        if (action == GLFW_PRESS) {
+            if (key == GLFW_KEY_ESCAPE) {
+                rd->cursorCaptured = !rd->cursorCaptured;
+                glfwSetInputMode(window, GLFW_CURSOR, rd->cursorCaptured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+                glfwSetCursorPos(window, rd->swapChainExtent.width/2, rd->swapChainExtent.height/2);
+            } else { // other keys are for moving the camera
+                rd->camera.keys[key] = true;
+            }
+        } else if (action == GLFW_RELEASE) {
+            rd->camera.keys[key] = false;
+        }
+    }
+}
+
+void Renderer::mouseInputCallback(GLFWwindow *window, double xpos, double ypos) {
+    Renderer* rd = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
+    if (!rd->cursorCaptured)
+        return;
+
+    static float lastX = 400.0f;
+    static float lastY = 300.0f;
+    static bool firstMouse = true;
+
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xOffset = xpos - lastX;
+    float yOffset = lastY - ypos;
+
+    lastX = xpos;
+    lastY = ypos;
+
+    if (rd->camera.mouse(xOffset, yOffset)) {
+        rd->frameCount = 0;
+    }
 }
 
 void Renderer::drawFrame() {
@@ -216,7 +266,7 @@ void Renderer::drawFrame() {
         renderPassInfo.pClearValues = nullptr;
 
         vkCmdBeginRenderPass(currentCmdBuf, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        guiHandle->draw(currentCmdBuf);
+        guiHandle->draw(this, currentCmdBuf);
         vkCmdEndRenderPass(currentCmdBuf);
     }
     vkEndCommandBuffer(currentCmdBuf);
@@ -601,39 +651,6 @@ void Renderer::createInstance() {
     }
 }
 
-void Renderer::keyInputCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
-    if (key >= 0 && key < 1024) {
-        if (action == GLFW_PRESS) {
-            app->camera.keys[key] = true;
-        } else if (action == GLFW_RELEASE) {
-            app->camera.keys[key] = false;
-        }
-    }
-}
-
-void Renderer::mouseInputCallback(GLFWwindow *window, double xpos, double ypos) {
-    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
-
-    static float lastX = 400.0f;
-    static float lastY = 300.0f;
-    static bool firstMouse = true;
-
-    if (firstMouse) {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-
-    float xOffset = xpos - lastX;
-    float yOffset = lastY - ypos;
-
-    lastX = xpos;
-    lastY = ypos;
-
-    app->camera.mouse(xOffset, yOffset);
-}
-
 void Renderer::createSurface() {
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface)) {
         throw std::runtime_error("failed to create window surface");
@@ -724,9 +741,9 @@ void Renderer::pickPhysicalDevice() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    for (const auto& device : devices) {
-        if (isDeviceSuitable(device)) {
-            physicalDevice = device;
+    for (const auto& device_: devices) {
+        if (isDeviceSuitable(device_)) {
+            physicalDevice = device_;
             break;
         }
     }
@@ -736,10 +753,10 @@ void Renderer::pickPhysicalDevice() {
     }
 }
 
-bool Renderer::isDeviceSuitable(VkPhysicalDevice device) {
-    QueueFamilyIndices indices = findQueueFamilies(device);
+bool Renderer::isDeviceSuitable(VkPhysicalDevice device_) {
+    QueueFamilyIndices indices = findQueueFamilies(device_);
 
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
+    bool extensionsSupported = checkDeviceExtensionSupport(device_);
 
     // VkPhysicalDeviceFeatures supportedFeatures;
     // vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
@@ -758,11 +775,11 @@ bool Renderer::isDeviceSuitable(VkPhysicalDevice device) {
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.pNext = &bufferAddressFeatures;
 
-    vkGetPhysicalDeviceFeatures2(device, &features2);
+    vkGetPhysicalDeviceFeatures2(device_, &features2);
 
     bool swapChainAdequate = false;
     if (extensionsSupported) {
-        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device_);
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
     //return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy
@@ -776,12 +793,12 @@ bool Renderer::isDeviceSuitable(VkPhysicalDevice device) {
             rtPipelineFeatures.rayTracingPipeline;
 }
 
-bool Renderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+bool Renderer::checkDeviceExtensionSupport(VkPhysicalDevice device_) {
     uint32_t extension_count;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+    vkEnumerateDeviceExtensionProperties(device_, nullptr, &extension_count, nullptr);
 
     std::vector<VkExtensionProperties> availableExtensions(extension_count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, availableExtensions.data());
+    vkEnumerateDeviceExtensionProperties(device_, nullptr, &extension_count, availableExtensions.data());
 
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
@@ -890,14 +907,14 @@ void Renderer::createLogicalDevice() {
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-QueueFamilyIndices Renderer::findQueueFamilies(VkPhysicalDevice device) {
+QueueFamilyIndices Renderer::findQueueFamilies(VkPhysicalDevice device_) {
     QueueFamilyIndices indices;
 
     uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(device_, &queueFamilyCount, nullptr);
 
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    vkGetPhysicalDeviceQueueFamilyProperties(device_, &queueFamilyCount, queueFamilies.data());
 
     int i = 0;
     for (const auto& queueFamily : queueFamilies) {
@@ -906,7 +923,7 @@ QueueFamilyIndices Renderer::findQueueFamilies(VkPhysicalDevice device) {
         }
 
         VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        vkGetPhysicalDeviceSurfaceSupportKHR(device_, i, surface, &presentSupport);
 
         if(presentSupport) {
             indices.presentFamily = i;
@@ -922,25 +939,25 @@ QueueFamilyIndices Renderer::findQueueFamilies(VkPhysicalDevice device) {
     return indices;
 }
 
-SwapChainSupportDetails Renderer::querySwapChainSupport(VkPhysicalDevice device) {
+SwapChainSupportDetails Renderer::querySwapChainSupport(VkPhysicalDevice device_) {
     SwapChainSupportDetails details;
 
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_, surface, &details.capabilities);
 
     uint32_t formatCounter;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCounter, nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device_, surface, &formatCounter, nullptr);
 
     if (formatCounter != 0) {
         details.formats.resize(formatCounter);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCounter, details.formats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device_, surface, &formatCounter, details.formats.data());
     }
 
     uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device_, surface, &presentModeCount, nullptr);
 
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device_, surface, &presentModeCount, details.presentModes.data());
     }
 
     return details;
@@ -1507,15 +1524,26 @@ void Renderer::createDescriptorSetLayout_RT() {
         { 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}, // vertex
         { 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}, // index
         {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
-        { 7, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, NUM_TEXTURES, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
+        { 7, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4096, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
         {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}
     };
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{};
+    bindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+
+    std::vector<VkDescriptorBindingFlags> flags(bindings.size(), 0);
+    flags[7] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+    bindingFlags.bindingCount = flags.size();
+    bindingFlags.pBindingFlags = flags.data();
+
 
     VkDescriptorSetLayoutCreateInfo layoutCreateInfo{};
     layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutCreateInfo.pNext = nullptr;
     layoutCreateInfo.pBindings = bindings.data();
     layoutCreateInfo.bindingCount = bindings.size();
+    layoutCreateInfo.pNext = &bindingFlags;
 
     if (vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed creating ray tracing descriptor set layout") ;
@@ -1532,12 +1560,13 @@ void Renderer::createDescriptorPool_RT() {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_FRAMES_IN_FLIGHT * NUM_TEXTURES},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_FRAMES_IN_FLIGHT * 4096},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT}
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.poolSizeCount = poolSizes.size();
     poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
@@ -1704,10 +1733,8 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.projInverse = glm::inverse(proj);
     pc.cameraPos = camera.pos;
 
-    pc.frameIndex = imageIndex;
+    pc.frameIndex = frameCount;
     pc.clearColor = glm::vec4(255.0f/255.0f,  244.0f/255.0f, 229.0f/255.0f, 1.0f);
-    //pc.clearColor = glm::vec4(45.0f/255.0f,  56.0f/255.0f, 58.0f/255.0f, 1.0f);
-    pc.frameCount = frameCount;
     pc.lightIntensity = 2.0f;
     pc.textureCount = NUM_TEXTURES;
 
@@ -1792,7 +1819,7 @@ void Renderer::createSyncObjects() {
         }
     }
 
-    for (int i = 0; i < renderFinishedSemaphores.size(); i++) {
+    for (size_t i = 0; i < renderFinishedSemaphores.size(); i++) {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed creating renderFinished semaphore");
         }
@@ -2211,8 +2238,6 @@ void Renderer::traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, g
 
 void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform) {
     if (node.mesh >= 0) {
-        tinygltf::Mesh& mesh = model.meshes[node.mesh];
-
         MeshInfo& mInfo = meshInfos[node.mesh];
 
         for (uint32_t i = 0; i < mInfo.primitiveCount; i++) {
@@ -2294,8 +2319,6 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
         transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").GetNumberAsDouble());
     }
 
-    std::cout << "Transmissionfactor: " << transmissionFactor << std::endl;
-
     m.transmissionFactor = transmissionFactor;
 
     m.normalTexture = mat.normalTexture.index >= 0 ? map[mat.normalTexture.index] : -1;
@@ -2310,10 +2333,15 @@ void Renderer::createScene_GLTF() {
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    //std::string filename = "Sponza/glTF/Sponza.gltf";
-    //std::string filename = "sphereTest/spheres.gltf";
-    //std::string filename = "cornell_box-_original/scene.gltf";
-    std::string filename = "dragon/DragonAttenuation.gltf";
+    std::string filename;
+    std::string textureDir = scenes[sceneIndex];
+
+    for (const auto& entry : std::filesystem::directory_iterator(scenes[sceneIndex])) {
+        if (entry.path().extension() == ".gltf") { // get the first gltf file in the directory
+            filename = entry.path();
+            break;
+        }
+    }
 
     //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
@@ -2348,11 +2376,11 @@ void Renderer::createScene_GLTF() {
         const tinygltf::Image& img = model.images[source];
 
         TextureInput tinput{};
-        std::string path = "dragon/" + img.uri;
+        //std::string path = "dragon/" + img.uri;
         //std::string path = "Sponza/glTF/" + img.uri;
         //std::string path = "sphereTest/" + img.uri;
         //std::string path = "cornell_box-_original/" + img.uri;
-        tinput.path = path;
+        tinput.path = textureDir + img.uri;
 
         if (img.uri.empty()) {
             mapGltfTextureToVulkan[texIdx] = -1;
@@ -2448,7 +2476,6 @@ void Renderer::createScene_GLTF() {
     for (const tinygltf::Mesh& mesh : model.meshes) {
         for (const tinygltf::Primitive& primitive : mesh.primitives) {
 
-            primitive.material;
             const tinygltf::Material& mat = model.materials[primitive.material];
 
             auto itPos = primitive.attributes.find("POSITION");
@@ -2638,24 +2665,24 @@ void Renderer::createTopLevelAccelerationStructure() {
 
         const Blas& blas = blasPool[inst.primitiveIndex];
 
-        TlasInstance instance{};
-        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        TlasInstance tinstance{};
+        tinstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         glm::mat4 m4 = inst.transform;
         glm::mat3x4 m3x4(inst.transform);
-        instance.transform = m3x4;
+        tinstance.transform = m3x4;
 
         bool flipped = glm::determinant(m4) < 0.0f;
-        if (flipped) instance.flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
+        if (flipped) tinstance.flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
 
 
         VkAccelerationStructureDeviceAddressInfoKHR blasAddressInfo{};
         blasAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         blasAddressInfo.accelerationStructure = blas.handle;
-        instance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
-        instance.instanceCustomIndex = inst.primitiveIndex;
-        instance.mask = 0xFF;
-        instance.instanceShaderBindingTableRecordOffset = 0;
-        tlasInstances.push_back(instance);
+        tinstance.blasDeviceAddress = pfnGetAccelerationStructureDeviceAddressKHR(device, &blasAddressInfo);
+        tinstance.instanceCustomIndex = inst.primitiveIndex;
+        tinstance.mask = 0xFF;
+        tinstance.instanceShaderBindingTableRecordOffset = 0;
+        tlasInstances.push_back(tinstance);
 
     }
 
@@ -2721,6 +2748,55 @@ void Renderer::createImguiRenderPass() {
     rpInfo.pSubpasses = &subpass;
 
     vkCreateRenderPass(device, &rpInfo, nullptr, &imguiRenderPass);
+}
+
+void Renderer::recreateScene_GLTF() {
+    vkDeviceWaitIdle(device);
+    vkDestroyBuffer(device, vertexBuffer, nullptr); vertexBuffer = VK_NULL_HANDLE;
+    vkDestroyBuffer(device, indexBuffer, nullptr); indexBuffer = VK_NULL_HANDLE;
+    vkDestroyBuffer(device, offsetBuffer, nullptr); offsetBuffer = VK_NULL_HANDLE;
+    vkDestroyBuffer(device, materialBuffer, nullptr); materialBuffer = VK_NULL_HANDLE;
+
+    vkFreeMemory(device, vertexBufferMemory,nullptr); vertexBufferMemory = VK_NULL_HANDLE;
+    vkFreeMemory(device, indexBufferMemory,nullptr); indexBufferMemory = VK_NULL_HANDLE;
+    vkFreeMemory(device, offsetBufferMemory,nullptr); offsetBufferMemory = VK_NULL_HANDLE;
+    vkFreeMemory(device, materialBufferMemory, nullptr); materialBufferMemory = VK_NULL_HANDLE;
+
+    arenaFree(&vertexArena);
+    arenaFree(&indexArena);
+    arenaFree(&offsetArena);
+
+    for (auto& blasInstance : blasPool) {
+        blasInstance.destroy(device);
+    }
+    blasPool.clear();
+    tlas.destroy(device);
+
+    for (auto& texture : textures) {
+        texture.cleanup(device);
+    }
+
+    textures.clear();
+    materials.clear();
+    primitiveInfos.clear();
+    sceneInstances.clear();
+    textureCache.clear();
+    meshInfos.clear();
+
+    vkFreeDescriptorSets(device, descriptorPool, MAX_FRAMES_IN_FLIGHT, descriptorSets.data());
+
+    camera.resetCamera();
+
+    frameCount = 0;
+
+    createScene_GLTF();
+    createVertexBuffer();
+    createIndexBuffer();
+    createOffsetBuffer();
+    createMaterialBuffer();
+    createBottomLevelAccelerationStructures();
+    createTopLevelAccelerationStructure();
+    createDescriptorSet_RT();
 }
 
 void Renderer::initGui() {

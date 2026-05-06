@@ -48,11 +48,23 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct ScenePath {
+    const char* path;
+    const char* texturePath;
+};
+
 struct Texture {
     VkImage image;
     VkImageView view;
     VkDeviceMemory memory;
     VkSampler sampler;
+
+    void cleanup(VkDevice device) {
+        vkDestroyImage(device, image, nullptr);
+        vkDestroyImageView(device, view, nullptr);
+        vkFreeMemory(device, memory, nullptr);
+        vkDestroySampler(device, sampler, nullptr);
+    }
 };
 
 struct TextureInput {
@@ -74,14 +86,12 @@ struct MeshInfo {
     uint32_t primitiveCount;
 };
 
-class Renderer {
-public:
+struct Renderer {
     void init() {
         initWindow();
         initVulkan();
     }
 
-public:
     VkDebugUtilsMessengerEXT debugMessenger;
     VkSurfaceKHR surface;
 
@@ -99,7 +109,7 @@ public:
 
     VkQueue graphicsQueue;
     VkQueue presentQueue;
-private:
+
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
     VkPipelineLayout computePipelineLayout_RT;
@@ -107,6 +117,11 @@ private:
 
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
+
+    const char* scenes[3] = {"dragon/", "Sponza/glTF/", "sphereTest/"};
+    size_t sceneIndex = 2;
+    bool pendingSceneRecreate = false;
+    bool cameraStateChanged = false;
 
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
@@ -128,20 +143,15 @@ private:
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
 
-public:
     VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
 
-private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> inFlightImages;
 
-
-    std::vector<size_t> vertexCounts;
-    std::vector<size_t> indexCounts;
 
     std::vector<PrimitiveInfo> primitiveInfos;
     std::vector<SceneInstance> sceneInstances;
@@ -163,6 +173,7 @@ private:
     std::vector<Texture> textures;
 
     bool framebufferResized = false;
+    bool cursorCaptured = false;
 
     Camera camera;
 
@@ -185,8 +196,6 @@ private:
     VkStridedDeviceAddressRegionKHR missRegion{};
     VkStridedDeviceAddressRegionKHR chitRegion{};
 
-public:
-
     VkRenderPass imguiRenderPass;
     GUI* guiHandle;
 
@@ -200,7 +209,6 @@ public:
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
     void cleanup();
-private:
     void createInstance();
 
     static void keyInputCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
@@ -220,12 +228,12 @@ private:
         void* pUserData);
 
     void pickPhysicalDevice();
-    bool isDeviceSuitable(VkPhysicalDevice device);
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+    bool isDeviceSuitable(VkPhysicalDevice device_);
+    bool checkDeviceExtensionSupport(VkPhysicalDevice device_);
     void createLogicalDevice();
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device_);
 
-    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device_);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
@@ -240,12 +248,10 @@ private:
     void initImguiBackend();
     void createImguiRenderPass();
 
-public:
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-private:
     void createPipeline_RT();
 
     void createShaderBindingTable();
@@ -302,6 +308,8 @@ private:
     static glm::mat3x4 createTopLevelTransformMatrix(glm::vec3 pos);
 
     void createScene_GLTF();
+    void recreateScene_GLTF();
+
     Material fetchMaterialInfo(const tinygltf::Material& mat, const std::vector<int>& map);
 
     static glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
