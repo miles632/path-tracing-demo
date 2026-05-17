@@ -118,8 +118,8 @@ struct Renderer {
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
 
-    const char* scenes[3] = {"dragon/", "Sponza/glTF/", "sphereTest/"};
-    size_t sceneIndex = 2;
+    const char* scenes[4] = {"dragon/", "Sponza/glTF/", "sphereTest/", "bistro/"};
+    size_t sceneIndex = 1;
     bool pendingSceneRecreate = false;
     bool cameraStateChanged = false;
 

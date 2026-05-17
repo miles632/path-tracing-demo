@@ -10,8 +10,13 @@
 #include "host_device.h"
 #include "scatter.glsl"
 
+layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
+
 hitAttributeEXT vec2 attribs;
-rayPayloadInEXT hitPayload payload;
+
+layout(location = 0) rayPayloadInEXT hitPayload payload;
+layout(location = 1) rayPayloadEXT shadowPayload sPayload;
+
 
 layout(push_constant) uniform _PushConstants { PushConstants pc; };
 
@@ -63,11 +68,9 @@ void main() {
 
     mat3 normalMatrix = transpose(inverse(mat3(gl_ObjectToWorldEXT)));
     vec3 worldNormal = normalize(normalMatrix * normal);
-
     vec2 uv = v0.texture * barycentrics.x + v1.texture * barycentrics.y + v2.texture * barycentrics.z;
 
     vec3 color = mat.baseColorFactor.xyz;
-    //vec3 color = vec3(0.502, 0, 0.502);
     if (mat.baseColorTexture > -1 && mat.baseColorTexture < pc.textureCount ) {
         color = texture(DiffuseTex[nonuniformEXT(mat.baseColorTexture)], uv).rgb;
     }
@@ -85,8 +88,35 @@ void main() {
         // skip 4 now
     }
 
+    // we trace a ray from the hit point towards the sun, if it hits anything the
+    // closest hit shader is skipped and if it nothing stands in the way between the hit point
+    // and the sun the shadow payload is set to false
+    float tmin = 0.001;
+    float tmax = 1e4;
+    vec3 hitPos = gl_WorldRayOriginEXT + gl_HitTEXT * gl_WorldRayDirectionEXT;
+    hitPos += worldNormal * 0.01;
+    vec3 sunDir = normalize(vec3(0.2, 0.95, 0.1));
+    sPayload.shadow = true;
+
+    traceRayEXT(
+       tlas,
+       gl_RayFlagsSkipClosestHitShaderEXT,
+       0xFF,
+       1u,
+       0u,
+       1u,
+       hitPos, 0.01, sunDir.xyz, tmax, 1
+    );
+
+    vec3 directLight = vec3(0.0);
+    if (!sPayload.shadow) {
+       float cosTheta = max(dot(worldNormal, sunDir), 0.0);
+       directLight = sunColor * cosTheta * color;
+    }
+
     vec3 reflected = reflect(gl_WorldRayDirectionEXT, worldNormal);
 
     payload = scatter(worldNormal, gl_WorldRayDirectionEXT, gl_HitTEXT,
         payload.RandomSeed, color, mat.metallicFactor, mat.roughnessFactor, mat.transmissionFactor, 1.5);
+    payload.ColorAndDistance.rgb += directLight;
 }

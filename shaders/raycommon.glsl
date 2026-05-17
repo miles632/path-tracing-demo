@@ -7,6 +7,13 @@ struct hitPayload {
     uint RandomSeed;
 };
 
+struct shadowPayload {
+    bool shadow;
+};
+
+const vec3 sunColor = vec3(10.0, 9.0, 7.0);
+
+
 vec3 mix(vec3 a, vec3 b, vec3 c, vec3 barycentrics)
 {
     return a * barycentrics.x + b * barycentrics.y + c * barycentrics.z;

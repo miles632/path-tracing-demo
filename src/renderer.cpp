@@ -848,6 +848,7 @@ void Renderer::createLogicalDevice() {
     bufferAddressFeatures.bufferDeviceAddress = VK_TRUE;
     bufferAddressFeatures.pNext = &accelStructFeatures;
 
+
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.features.samplerAnisotropy = VK_TRUE;
@@ -1154,11 +1155,13 @@ void Renderer::createPipeline_RT() {
     auto rgenShaderCode = readFile("shaders/rgen.spv");
     auto rchitShaderCode = readFile("shaders/rchit.spv");
     auto rmissShaderCode = readFile("shaders/rmiss.spv");
+    auto smissShaderCode = readFile("shaders/smiss.spv");
     //auto copyToSwapchainCode = readFile("shaders/copy.spv");
 
     VkShaderModule rgenModule = createShaderModule(rgenShaderCode);
     VkShaderModule rchitModule = createShaderModule(rchitShaderCode);
     VkShaderModule rmissModule = createShaderModule(rmissShaderCode);
+    VkShaderModule smissModule = createShaderModule(smissShaderCode);
     //VkShaderModule copyModule = createShaderModule(copyToSwapchainCode);
 
     VkPipelineShaderStageCreateInfo rgenStageInfo{};
@@ -1179,7 +1182,15 @@ void Renderer::createPipeline_RT() {
     missStageInfo.module = rmissModule;
     missStageInfo.pName = "main";
 
-    std::array<VkPipelineShaderStageCreateInfo, 3> shaderStages = {rgenStageInfo, chitStageInfo, missStageInfo};
+    VkPipelineShaderStageCreateInfo smissStageInfo{};
+    smissStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    smissStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+    smissStageInfo.module = smissModule;
+    smissStageInfo.pName = "main";
+
+
+
+    std::array<VkPipelineShaderStageCreateInfo, 4> shaderStages = {rgenStageInfo, chitStageInfo, missStageInfo, smissStageInfo};
 
     VkRayTracingShaderGroupCreateInfoKHR raygenGroup{};
     raygenGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -1197,6 +1208,13 @@ void Renderer::createPipeline_RT() {
     missGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
     missGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
+    VkRayTracingShaderGroupCreateInfoKHR smissGroup{};
+    smissGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+    smissGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+    smissGroup.generalShader = 3;
+    smissGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+    smissGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+    smissGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
     VkRayTracingShaderGroupCreateInfoKHR hitGroup{};
     hitGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -1206,7 +1224,7 @@ void Renderer::createPipeline_RT() {
     hitGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
     hitGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
-    std::array shaderGroups = {raygenGroup, missGroup, hitGroup};
+    std::array shaderGroups = {raygenGroup, missGroup, smissGroup, hitGroup};
 
     VkPushConstantRange pcRange{};
     pcRange.stageFlags =    VK_SHADER_STAGE_RAYGEN_BIT_KHR |
@@ -1230,11 +1248,11 @@ void Renderer::createPipeline_RT() {
     pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
     pipelineInfo.pNext = nullptr;
     pipelineInfo.flags = 0;
-    pipelineInfo.stageCount = 3;
+    pipelineInfo.stageCount = 4;
     pipelineInfo.pStages = shaderStages.data();
     pipelineInfo.groupCount = (uint32_t)shaderGroups.size();
     pipelineInfo.pGroups = shaderGroups.data();
-    pipelineInfo.maxPipelineRayRecursionDepth = 2;
+    pipelineInfo.maxPipelineRayRecursionDepth = 4;
     pipelineInfo.pLibraryInfo = nullptr; // TODO: implement pipeline libraries later
     pipelineInfo.pLibraryInterface = nullptr;
     pipelineInfo.pDynamicState = nullptr;
@@ -1282,6 +1300,7 @@ void Renderer::createPipeline_RT() {
     vkDestroyShaderModule(device, rchitModule, nullptr);
     vkDestroyShaderModule(device, rgenModule, nullptr);
     vkDestroyShaderModule(device, rmissModule, nullptr);
+    vkDestroyShaderModule(device, smissModule, nullptr);
     //vkDestroyShaderModule(device, copyModule, nullptr);
 }
 
@@ -1516,7 +1535,7 @@ void Renderer::createDescriptorSetLayout_RT() {
     /* TODO: reorganize into two different descriptor sets, first for scene to hold geometry buffers,
        second for output image and the ubo*/
     std::vector<VkDescriptorSetLayoutBinding> bindings = {
-    { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR},
+    { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
     { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR }, // accumulation image
         {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR }, // dst image that gets copied into swapchain
         { 3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
@@ -1587,7 +1606,7 @@ void Renderer::createShaderBindingTable() {
     vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
 
     uint32_t handleSize = rtProps.shaderGroupHandleSize;
-    uint32_t handleCount = 3;
+    uint32_t handleCount = 4;
 
     auto alignUp = [](size_t value, size_t alignment) -> uint32_t {
         return (value + alignment - 1) & ~(alignment -1);
@@ -1601,7 +1620,7 @@ void Renderer::createShaderBindingTable() {
     rgenRegion.stride = regionStride;
     rgenRegion.size = rgenRegion.stride;
     missRegion.stride = handleSizeAligned;
-    missRegion.size = regionStride;
+    missRegion.size = alignUp(2 * handleSizeAligned, rtProps.shaderGroupBaseAlignment);
     chitRegion.stride = handleSizeAligned;
     chitRegion.size = regionStride;
 
@@ -1636,18 +1655,19 @@ void Renderer::createShaderBindingTable() {
     vkMapMemory(device, sbtBufferMemory, 0, dataSize, 0, &data);
     auto *pSBTBuffer = reinterpret_cast<uint8_t*>(data);
     uint8_t* pData = nullptr;
-    uint32_t handleIdx = 0;
 
     pData = pSBTBuffer;
-    memcpy(pData, getHandle(handleIdx++), handleSize);
+    memcpy(pData, getHandle(0), handleSize);
 
+    // miss region
     pData = pSBTBuffer + rgenRegion.size;
-    memcpy(pData, getHandle(handleIdx++), handleSize);
+    memcpy(pData, getHandle(1), handleSize); // miss
     pData += missRegion.stride;
+    memcpy(pData, getHandle(2), handleSize); // smiss
 
+    // chit region
     pData = pSBTBuffer + rgenRegion.size + missRegion.size;
-    memcpy(pData, getHandle(handleIdx++), handleSize);
-    pData += chitRegion.stride;
+    memcpy(pData, getHandle(3), handleSize); // chit
 
     vkUnmapMemory(device, sbtBufferMemory);
 }
@@ -1734,7 +1754,8 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.cameraPos = camera.pos;
 
     pc.frameIndex = frameCount;
-    pc.clearColor = glm::vec4(255.0f/255.0f,  244.0f/255.0f, 229.0f/255.0f, 1.0f);
+    //pc.clearColor = glm::vec4(255.0f/255.0f,  244.0f/255.0f, 229.0f/255.0f, 1.0f);
+    pc.clearColor = glm::vec4(0.53f, 0.81f, 0.98f, 1.0f);
     pc.lightIntensity = 2.0f;
     pc.textureCount = NUM_TEXTURES;
 

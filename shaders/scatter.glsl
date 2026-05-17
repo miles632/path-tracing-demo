@@ -6,7 +6,8 @@
 hitPayload scatter(vec3 normal, vec3 rayDir, const float t, inout uint seed,
                    vec3 color, const float metallicW, const float roughness, const float dielectricW, const float eta) {
     const float fuzz = clamp(roughness * roughness, 0.0, 1.0);
-    const vec3 rand3 = randomUnitInSphere(seed);
+    vec3 rand3 = randomUnitInSphere(seed);
+    if (dot(rand3, normal) < 0.0) rand3 = -rand3; // flip to correct hemisphere
 
     vec3 raw = normal + rand3;
     const vec3 lambertDir = (dot(raw, raw) < 1e-6) ? normal : normalize(raw);
