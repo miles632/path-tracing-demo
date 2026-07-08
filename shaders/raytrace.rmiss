@@ -15,7 +15,7 @@ void main() {
     vec3 sunDir = normalize(vec3(0.2, 0.95, 0.1));
 
     float t = max(dir.y, 0.0);
-    vec3 horizon = vec3(2.0, 1.8, 1.4);
+    vec3 horizon = pc.clearColor.rgb;
     vec3 zenith  = vec3(0.8, 1.2, 2.5);
     vec3 skyColor = mix(horizon, zenith, t);
 

@@ -1754,10 +1754,12 @@ void Renderer::raytrace(VkCommandBuffer cmdBuf, uint32_t imageIndex) {
     pc.cameraPos = camera.pos;
 
     pc.frameIndex = frameCount;
-    //pc.clearColor = glm::vec4(255.0f/255.0f,  244.0f/255.0f, 229.0f/255.0f, 1.0f);
-    pc.clearColor = glm::vec4(0.53f, 0.81f, 0.98f, 1.0f);
-    pc.lightIntensity = 2.0f;
     pc.textureCount = NUM_TEXTURES;
+
+    pc.clearColor = settings.backgroundColor;
+    pc.lightIntensity = settings.sunIntensity;
+    pc.maxBounces = settings.maxBounces;
+    pc.numSamples = settings.numSamples;
 
     vkCmdPushConstants(cmdBuf, pipelineLayout, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
         0, sizeof(PushConstants), &pc);

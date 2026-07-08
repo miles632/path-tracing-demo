@@ -50,8 +50,9 @@ struct PushConstants {
     VEC4 clearColor;
     VEC4 lightPos;
     float lightIntensity;
-    int lightType;
     UINT32 textureCount;
+    UINT32 maxBounces;
+    UINT32 numSamples;
 };
 
 struct UniformBufferObject {

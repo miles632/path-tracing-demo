@@ -73,11 +73,27 @@ void GUI::draw(Renderer* rd, VkCommandBuffer cmdBuf) {
 
     ImGui::Begin("Test");
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-    if (ImGui::Combo("Scene", reinterpret_cast<int*>(&rd->sceneIndex), rd->scenes, IM_COUNTOF(rd->scenes))) {
+    if (ImGui::Combo("Szene", reinterpret_cast<int*>(&rd->sceneIndex), rd->scenes, IM_COUNTOF(rd->scenes))) {
         rd->pendingSceneRecreate = true;
     }
 
-    //ImGui::ShowDemoWindow();
+    if (ImGui::SliderFloat("Lichtintensität", &rd->settings.sunIntensity, 0.1f, 10.0f, "%.2f", 0)) {
+        rd->frameCount = 0;
+    }
+
+    if (ImGui::SliderInt("Max. erlaubte Lichtreflexionen", &rd->settings.maxBounces, 1, 8, "%d", 0)) {
+        rd->frameCount = 0;
+    }
+
+    if (ImGui::SliderInt("Anzahl der Samples", &rd->settings.numSamples, 1, 32, "%d", 0)) {
+        rd->frameCount = 0;
+    }
+
+    if (ImGui::ColorPicker3("Background color" , &rd->settings.backgroundColor.r)) {
+        rd->frameCount = 0;
+    }
+
+    ImGui::ShowDemoWindow();
     ImGui::End();
 
     ImGui::Render();

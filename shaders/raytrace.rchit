@@ -111,7 +111,7 @@ void main() {
     vec3 directLight = vec3(0.0);
     if (!sPayload.shadow) {
        float cosTheta = max(dot(worldNormal, sunDir), 0.0);
-       directLight = sunColor * cosTheta * color;
+       directLight = sunColor * pc.lightIntensity * cosTheta * color;
     }
 
     vec3 reflected = reflect(gl_WorldRayDirectionEXT, worldNormal);

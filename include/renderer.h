@@ -42,6 +42,13 @@ struct QueueFamilyIndices {
 
 };
 
+struct SceneSettings {
+    float sunIntensity = 5.0f;
+    int maxBounces = 2;
+    int numSamples = 4;
+    glm::vec4 backgroundColor = glm::vec4( 0.53f, 0.81f, 0.98f, 1.0f);
+};
+
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
     std::vector<VkSurfaceFormatKHR> formats;
@@ -196,6 +203,8 @@ struct Renderer {
     VkStridedDeviceAddressRegionKHR missRegion{};
     VkStridedDeviceAddressRegionKHR chitRegion{};
 
+
+    SceneSettings settings;
     VkRenderPass imguiRenderPass;
     GUI* guiHandle;
 

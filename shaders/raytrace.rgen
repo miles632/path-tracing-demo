@@ -24,7 +24,7 @@ void main() {
     payload.RandomSeed = pixelRandomSeed;
 
     vec3 pixelColor = vec3(0.0);
-    const uint NUM_SAMPLES = 2u;
+    const uint NUM_SAMPLES = pc.numSamples;
 
     const float aperture = 0.0005;
     const float focusDistance = 0.5;
@@ -46,7 +46,7 @@ void main() {
 
         vec4 origin = pc.viewInverse * vec4(offset, 0.0, 1.0);
 
-        const int MAX_BOUNCES = 4;
+        const uint MAX_BOUNCES = pc.maxBounces;
         vec3 throughput = vec3(1.0);
 
         for (int bounce = 0; bounce <= MAX_BOUNCES; ++bounce) {
