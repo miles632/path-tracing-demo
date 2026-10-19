@@ -2352,21 +2352,32 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
 }
 
 void Renderer::createScene_GLTF() {
-    tinygltf::Model model;
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
-    std::string filename;
-    std::string textureDir = scenes[sceneIndex];
+    namespace fs = std::filesystem;
+    const fs::path sceneDir = scenes[sceneIndex];
 
-    for (const auto& entry : std::filesystem::directory_iterator(scenes[sceneIndex])) {
+    if (!fs::is_directory(sceneDir)) {
+        throw std::runtime_error("Scene directory not found: " + fs::absolute(sceneDir).string() +
+            "Working directory:" + fs::current_path().string());
+    }
+
+    fs::path gltfPath;
+    for (const auto& entry : fs::directory_iterator(sceneDir)) {
         if (entry.path().extension() == ".gltf") { // get the first gltf file in the directory
-            filename = entry.path();
+            gltfPath = entry.path();
             break;
         }
     }
 
-    //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+    if (gltfPath.empty()) {
+        throw std::runtime_error("No .gltf file in " + sceneDir.string());
+    }
+
+    const std::string filename = gltfPath.string();
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err;
+    std::string warn;
+
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
 
     if (!warn.empty()) {
@@ -2399,11 +2410,7 @@ void Renderer::createScene_GLTF() {
         const tinygltf::Image& img = model.images[source];
 
         TextureInput tinput{};
-        //std::string path = "dragon/" + img.uri;
-        //std::string path = "Sponza/glTF/" + img.uri;
-        //std::string path = "sphereTest/" + img.uri;
-        //std::string path = "cornell_box-_original/" + img.uri;
-        tinput.path = textureDir + img.uri;
+        tinput.path = (sceneDir / img.uri).generic_string();
 
         if (img.uri.empty()) {
             mapGltfTextureToVulkan[texIdx] = -1;
