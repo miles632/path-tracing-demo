@@ -2248,18 +2248,41 @@ void Renderer::traverseNodes_GLTF(tinygltf::Model& model) {
     }
 }
 
-void Renderer::traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform) {
+void Renderer::traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 worldTransform) {
     glm::mat4 local = getFinalMatrix_GLTF(node);
-    glm::mat4 worldTransform = parentTransform * local;
+    glm::mat4 wt = worldTransform * local;
 
-    processNode_GLTF(model, node, worldTransform);
+    processNode_GLTF(model, node, wt);
 
     for (const auto i : node.children) {
-        traverseNode_GLTF(model, model.nodes[i], worldTransform);
+        traverseNode_GLTF(model, model.nodes[i], wt);
     }
 }
 
-void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform) {
+void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 worldTransform) {
+
+    auto extIt = node.extensions.find("KHR_lights_punctual");
+    if (extIt != node.extensions.end()) {
+        int lightIndex = extIt->second.Get("light").GetNumberAsInt();
+
+        const tinygltf::Light& light = model.lights[lightIndex];
+        glm::vec3 worldPos = glm::vec3(worldTransform[3]);
+
+        LightInfo newLight;
+        newLight.position = worldPos;
+        newLight.color = glm::vec3(light.color[0], light.color[1], light.color[2]);
+        newLight.intensity = light.intensity;
+        newLight.range = light.range;
+        newLight.innerConeCos = light.spot.innerConeAngle;
+        newLight.outerConeCos = light.spot.outerConeAngle;
+
+        if (light.type == "point") newLight.type = 0;
+        if (light.type == "spot") newLight.type = 1;
+        if (light.type == "directional") newLight.type = 2;
+
+        lightInfos.push_back(newLight);
+    }
+
     if (node.mesh >= 0) {
         MeshInfo& mInfo = meshInfos[node.mesh];
 
@@ -2268,9 +2291,8 @@ void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, gl
 
             SceneInstance si;
             si.primitiveIndex = mInfo.firstPrimitive + i;
-            si.transform = parentTransform;
+            si.transform = worldTransform;
             sceneInstances.push_back(si);
-
         }
     }
 }
@@ -2378,6 +2400,8 @@ void Renderer::createScene_GLTF() {
     std::string err;
     std::string warn;
 
+    loader.SetImageLoader([](tinygltf::Image*, const int, std::string*, std::string*, int, int,
+        const unsigned char*, int, void*) { return true; }, nullptr);
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
 
     if (!warn.empty()) {

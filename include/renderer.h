@@ -44,8 +44,8 @@ struct QueueFamilyIndices {
 
 struct SceneSettings {
     float sunIntensity = 5.0f;
-    int maxBounces = 2;
-    int numSamples = 4;
+    int maxBounces = 6;
+    int numSamples = 2;
     glm::vec4 backgroundColor = glm::vec4( 0.53f, 0.81f, 0.98f, 1.0f);
 };
 
@@ -91,6 +91,18 @@ struct PrimitiveInfo {
 struct MeshInfo {
     uint32_t firstPrimitive;
     uint32_t primitiveCount;
+};
+
+struct LightInfo {
+    glm::vec3 position;
+    glm::vec3 color;
+    glm::vec3 direction;
+    float intensity;
+    float range;
+    float innerConeCos;
+    float outerConeCos;
+    int type; // 0 = point 1 = spot 2 = directional
+    int padding[3];
 };
 
 struct Renderer {
@@ -163,6 +175,7 @@ struct Renderer {
     std::vector<PrimitiveInfo> primitiveInfos;
     std::vector<SceneInstance> sceneInstances;
     std::vector<MeshInfo> meshInfos;
+    std::vector<LightInfo> lightInfos;
 
     Arena vertexArena;
     Arena indexArena;
@@ -325,9 +338,9 @@ struct Renderer {
     static glm::vec2 getVec2FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView &bufferView, const tinygltf::Buffer &buffer, const size_t index);
     static uint32_t getIndexFromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
 
-    void traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
+    void traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 worldTransform);
     void traverseNodes_GLTF(tinygltf::Model& model);
-    void processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 parentTransform);
+    void processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 worldTransform);
     glm::mat4 getFinalMatrix_GLTF(tinygltf::Node& node);
 
 };
