@@ -158,6 +158,10 @@ struct Renderer {
     VkDeviceMemory materialBufferMemory;
     VkDeviceAddress materialBufferAddress;
 
+    VkBuffer lightBuffer;
+    VkDeviceMemory lightBufferMemory;
+    VkDeviceAddress lightBufferAddress;
+
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
@@ -263,9 +267,8 @@ struct Renderer {
     void recreateSwapChain();
     void cleanupSwapChain();
 
-    void createVertexBuffer();
-    void createIndexBuffer();
-    void createOffsetBuffer();
+    void createStorageBuffers();
+    void createLocalBuffer(void* srcData, VkBuffer& dstBuffer, VkDeviceMemory& dstMemory, VkBufferUsageFlags usageFlags, VkDeviceSize size, VkDeviceAddress* dstAddress);
 
     void initImguiBackend();
     void createImguiRenderPass();
@@ -305,8 +308,6 @@ struct Renderer {
     void createTextureImages();
     void createTextureSampler(Texture& texture);
     void createTextureImageView(Texture& texture);
-
-    void createMaterialBuffer();
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
     void createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format,

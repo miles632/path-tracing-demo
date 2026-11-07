@@ -110,17 +110,8 @@ void Renderer::initVulkan() {
     std::cout << "[Init] Loading GLTF meshes\n";
     createScene_GLTF();
 
-    std::cout << "[Init] Creating vertex buffer\n";
-    createVertexBuffer();
-
-    std::cout << "[Init] Creating index buffer\n";
-    createIndexBuffer();
-
-    std::cout << "[Init] Creating offset buffer\n";
-    createOffsetBuffer();
-
-    std::cout << "[Init] Creating material buffer\n";
-    createMaterialBuffer();
+    std::cout << "[Init] Creating Storage Buffers\n";
+    createStorageBuffers();
 
     std::cout << "[Init] Creating uniform buffers\n";
     createUniformBuffers();
@@ -314,16 +305,11 @@ void Renderer::drawFrame() {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-
-
-
-void Renderer::createVertexBuffer() {
-    std::byte* vertexData = vertexArena.data;
-
+void Renderer::createLocalBuffer(void* srcData, VkBuffer& dstBuffer, VkDeviceMemory& dstMemory, VkBufferUsageFlags usageFlags, VkDeviceSize size, VkDeviceAddress* dstAddress = nullptr) {
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
     createBuffer(
-        vertexArena.capacity,
+        size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         stagingBuffer,
@@ -331,103 +317,72 @@ void Renderer::createVertexBuffer() {
     );
 
     void* stagingData;
-    vkMapMemory(device, stagingBufferMemory, 0, vertexArena.capacity, 0, &stagingData);
-    memcpy(stagingData, vertexData, vertexArena.offset);
+    vkMapMemory(device, stagingBufferMemory, 0, size, 0, &stagingData);
+    memcpy(stagingData, srcData, size);
     vkUnmapMemory(device, stagingBufferMemory);
 
     createBuffer(
-        vertexArena.capacity,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        size,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        vertexBuffer,
-        vertexBufferMemory
+        dstBuffer,
+        dstMemory
     );
 
-    copyBuffer(stagingBuffer, vertexBuffer, vertexArena.capacity);
+    copyBuffer(stagingBuffer, dstBuffer, size);
 
-    VkBufferDeviceAddressInfo addrInfo{};
-    addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    addrInfo.buffer = vertexBuffer;
-    vertexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &addrInfo);
+    if (dstAddress != nullptr) {
+        VkBufferDeviceAddressInfo addrInfo{};
+        addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addrInfo.buffer = dstBuffer;
+        *dstAddress = pfnGetBufferDeviceAddressKHR(device, &addrInfo);
+    }
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
-void Renderer::createIndexBuffer() {
-    std::byte* indexData = indexArena.data;
 
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(
-        vertexArena.capacity,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory
+void Renderer::createStorageBuffers() {
+    createLocalBuffer(
+        vertexArena.data, vertexBuffer, vertexBufferMemory,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        vertexArena.offset,
+        &vertexBufferAddress
+        );
+
+    // 2. Index Buffer
+    createLocalBuffer(
+        indexArena.data, indexBuffer, indexBufferMemory,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        indexArena.offset,
+        &indexBufferAddress
     );
 
-    void* stagingData;
-    vkMapMemory(device, stagingBufferMemory, 0, indexArena.capacity, 0, &stagingData);
-    memcpy(stagingData, indexData, indexArena.offset);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(
-     indexArena.capacity,
-     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-     indexBuffer,
-     indexBufferMemory
-     );
-
-    copyBuffer(stagingBuffer, indexBuffer, indexArena.capacity);
-
-    VkBufferDeviceAddressInfo bufferAddressInfo{};
-    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    bufferAddressInfo.buffer = indexBuffer;
-    indexBufferAddress = pfnGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-void Renderer::createOffsetBuffer() {
-    std::byte* offsetData = offsetArena.data;
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(
-        offsetArena.capacity,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory
+    // 3. Offset Buffer (Just a list of uints for the shader, NOT an index buffer)
+    createLocalBuffer(
+        offsetArena.data, offsetBuffer, offsetBufferMemory,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        offsetArena.offset,
+        &offsetBufferAddress
     );
 
-    void* stagingData;
-    vkMapMemory(device, stagingBufferMemory, 0, offsetArena.capacity, 0, &stagingData);
-    memcpy(stagingData, offsetData, offsetArena.offset);
-    vkUnmapMemory(device, stagingBufferMemory);
+    // 4. Material Buffer (Just storage data for the shader)
+    createLocalBuffer(
+        materials.data(), materialBuffer, materialBufferMemory,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        materials.size() * sizeof(Material),
+        &materialBufferAddress
+    );
 
-    createBuffer(
-     offsetArena.capacity,
-     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-     offsetBuffer,
-     offsetBufferMemory
-     );
-
-    copyBuffer(stagingBuffer, offsetBuffer, offsetArena.capacity);
-
-    VkBufferDeviceAddressInfo bufferAddressInfo{};
-    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    bufferAddressInfo.buffer = offsetBuffer;
-    offsetBufferAddress = pfnGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
+    // 5. Light Buffer (Just storage data for the shader)
+    /*
+    createLocalBuffer(
+        lightInfos.data(), lightBuffer, lightBufferMemory,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        lightInfos.size() * sizeof(LightInfo),
+        &lightBufferAddress // Make sure this is lightBufferAddress, NOT materialBufferAddress
+    );
+    */
 }
 
 VkCommandBuffer Renderer::beginSingleTimeCommands() {
@@ -1413,6 +1368,8 @@ void Renderer::createDescriptorSet_RT() {
         materialBufferInfo.range = VK_WHOLE_SIZE;
         materialBufferInfo.offset = 0;
 
+        VkDescriptorBufferInfo lightBufferInfo{};
+
 
         VkWriteDescriptorSet writeAccelStr{};
         writeAccelStr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1544,7 +1501,8 @@ void Renderer::createDescriptorSetLayout_RT() {
         { 5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}, // index
         {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
         { 7, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4096, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
-        {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}
+        {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR},
+        {9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR}
     };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{};
@@ -1580,6 +1538,7 @@ void Renderer::createDescriptorPool_RT() {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_FRAMES_IN_FLIGHT * 4096},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT}
     };
 
@@ -1852,46 +1811,6 @@ void Renderer::createSyncObjects() {
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
-}
-
-void Renderer::createMaterialBuffer() {
-    std::byte *materialData = reinterpret_cast<std::byte*>(materials.data());
-    const size_t materialSize = materials.size() * sizeof(Material);
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(materialSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory);
-
-    void* stagingData;
-    vkMapMemory(device, stagingBufferMemory, 0, materialSize, 0, &stagingData);
-    memcpy(stagingData, materialData, materialSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(
-            materialSize,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            materialBuffer,
-            materialBufferMemory
-            );
-
-    copyBuffer(stagingBuffer, materialBuffer, materialSize);
-
-    VkBufferDeviceAddressInfo addrInfo{};
-    addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    addrInfo.buffer = materialBuffer;
-    materialBufferAddress= pfnGetBufferDeviceAddressKHR(device, &addrInfo);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void Renderer::createTextureImage(std::string& fpath, Texture& texture) {
@@ -2844,10 +2763,7 @@ void Renderer::recreateScene_GLTF() {
     frameCount = 0;
 
     createScene_GLTF();
-    createVertexBuffer();
-    createIndexBuffer();
-    createOffsetBuffer();
-    createMaterialBuffer();
+    createStorageBuffers();
     createBottomLevelAccelerationStructures();
     createTopLevelAccelerationStructure();
     createDescriptorSet_RT();
