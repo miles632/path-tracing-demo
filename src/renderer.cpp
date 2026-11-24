@@ -143,6 +143,8 @@ void Renderer::initVulkan() {
     std::cout << "[Init] Creating synchronization objects\n";
     createSyncObjects();
 
+    std::cout << "Num em. triangles:" << emissiveTriangles.size() << std::endl;
+
     std::cout << "[Init] Vulkan initialization complete\n";
 }
 
@@ -374,15 +376,15 @@ void Renderer::createStorageBuffers() {
         &materialBufferAddress
     );
 
-    // 5. Light Buffer (Just storage data for the shader)
-    /*
     createLocalBuffer(
-        lightInfos.data(), lightBuffer, lightBufferMemory,
+        emissiveTriangles.data(), lightBuffer, lightBufferMemory,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        lightInfos.size() * sizeof(LightInfo),
+        emissiveTriangles.size() * sizeof(EmissiveTriangle),
         &lightBufferAddress // Make sure this is lightBufferAddress, NOT materialBufferAddress
     );
-    */
+
+    printf("createStorageBuffers: emissive=%zu bytes=%zu\n",
+       emissiveTriangles.size(), emissiveTriangles.size() * sizeof(EmissiveTriangle));
 }
 
 VkCommandBuffer Renderer::beginSingleTimeCommands() {
@@ -1369,7 +1371,9 @@ void Renderer::createDescriptorSet_RT() {
         materialBufferInfo.offset = 0;
 
         VkDescriptorBufferInfo lightBufferInfo{};
-
+        lightBufferInfo.buffer = lightBuffer;
+        lightBufferInfo.range = VK_WHOLE_SIZE;
+        lightBufferInfo.offset = 0;
 
         VkWriteDescriptorSet writeAccelStr{};
         writeAccelStr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1464,8 +1468,19 @@ void Renderer::createDescriptorSet_RT() {
         writeMaterials.pBufferInfo = &materialBufferInfo;
         writeMaterials.pNext = nullptr;
 
+        VkWriteDescriptorSet writeLights{};
+        writeLights.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeLights.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writeLights.dstSet = descriptorSets[i];
+        writeLights.dstBinding = 9;
+        writeLights.descriptorCount = 1;
+        writeLights.dstArrayElement = 0;
+        writeLights.pBufferInfo = &lightBufferInfo;
+        writeLights.pNext = nullptr;
+
+
         // TODO: add sampling
-        std::array<VkWriteDescriptorSet, 9> descriptorWrites;
+        std::array<VkWriteDescriptorSet, 10> descriptorWrites;
 
         descriptorWrites[0] = writeAccelStr;
         descriptorWrites[1] = writeStorageImage;
@@ -1476,6 +1491,7 @@ void Renderer::createDescriptorSet_RT() {
         descriptorWrites[6] = writeStorageHitOffsets;
         descriptorWrites[7] = writeTextures;
         descriptorWrites[8] = writeMaterials;
+        descriptorWrites[9] = writeLights;
 
         vkUpdateDescriptorSets(
             device,
@@ -2179,34 +2195,30 @@ void Renderer::traverseNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, g
 }
 
 void Renderer::processNode_GLTF(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 worldTransform) {
-
-    auto extIt = node.extensions.find("KHR_lights_punctual");
-    if (extIt != node.extensions.end()) {
-        int lightIndex = extIt->second.Get("light").GetNumberAsInt();
-
-        const tinygltf::Light& light = model.lights[lightIndex];
-        glm::vec3 worldPos = glm::vec3(worldTransform[3]);
-
-        LightInfo newLight;
-        newLight.position = worldPos;
-        newLight.color = glm::vec3(light.color[0], light.color[1], light.color[2]);
-        newLight.intensity = light.intensity;
-        newLight.range = light.range;
-        newLight.innerConeCos = light.spot.innerConeAngle;
-        newLight.outerConeCos = light.spot.outerConeAngle;
-
-        if (light.type == "point") newLight.type = 0;
-        if (light.type == "spot") newLight.type = 1;
-        if (light.type == "directional") newLight.type = 2;
-
-        lightInfos.push_back(newLight);
-    }
-
     if (node.mesh >= 0) {
         MeshInfo& mInfo = meshInfos[node.mesh];
 
+        tinygltf::Mesh& currentMesh = model.meshes[node.mesh];
+
         for (uint32_t i = 0; i < mInfo.primitiveCount; i++) {
             PrimitiveInfo& pi = primitiveInfos[mInfo.firstPrimitive + i];
+            tinygltf::Primitive gltfPrim = currentMesh.primitives[i]; // badly written
+
+            EmissiveTriangle triangle;
+
+            if (gltfPrim.material >= 0) {
+                const auto& mat = model.materials[gltfPrim.material];
+
+                /*
+                printf("Material %d emissiveFactor: %f, %f, %f | emissiveTex: %d\n",
+                    gltfPrim.material,
+                    mat.emissiveFactor[0], mat.emissiveFactor[1], mat.emissiveFactor[2],
+                    mat.emissiveTexture.index);
+                    */
+                if (mat.emissiveFactor[0] > 0 || mat.emissiveFactor[1] > 0 || mat.emissiveFactor[2] > 0) {
+                    extractEmissiveTriangles(model, gltfPrim, worldTransform, gltfPrim.material, emissiveTriangles);
+                }
+            }
 
             SceneInstance si;
             si.primitiveIndex = mInfo.firstPrimitive + i;
@@ -2253,6 +2265,9 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
     m.metallicRoughnessTexture = -1;
     m.occlusionTexture = -1;
     m.emissiveTexture = -1;
+    m.specularColorTexture = -1;
+    m.specularColorFactor = glm::vec4(1.0f);
+
 
     m.baseColorFactor = glm::vec4(1.0f);
     m.emissiveFactor = glm::vec4(0.0f);
@@ -2277,20 +2292,98 @@ Material Renderer::fetchMaterialInfo(const tinygltf::Material& mat, const std::v
         m.emissiveFactor = glm::vec4((float)mat.emissiveFactor[0], (float)mat.emissiveFactor[1], (float)mat.emissiveFactor[2], 0.0f);
     }
 
-    float transmissionFactor = 0.0f;
+    //float transmissionFactor = 0.0f;
     if (mat.extensions.count("KHR_materials_transmission")) {
         auto &ext = mat.extensions.at("KHR_materials_transmission");
-        transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").GetNumberAsDouble());
+        m.transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").GetNumberAsDouble());
     }
 
-    m.transmissionFactor = transmissionFactor;
+    if (mat.extensions.count("KHR_materials_specular")) {
+        const auto& ext = mat.extensions.at("KHR_materials_specular");
+
+        if (ext.Has("specularColorFactor")) {
+            const auto& f = ext.Get("specularColorFactor");
+            m.specularColorFactor = glm::vec4(glm::vec3(
+                (float)f.Get(0).GetNumberAsDouble(),
+                (float)f.Get(1).GetNumberAsDouble(),
+                (float)f.Get(2).GetNumberAsDouble()), 1.0f);
+        }
+        if (ext.Has("specularColorTexture")) {
+            int texIndex = ext.Get("specularColorTexture").Get("index").GetNumberAsInt();
+            m.specularColorTexture = map[texIndex];
+        }
+    }
+
+    std::cout << "specular tex: " << m.specularColorTexture << std::endl;
+
+    //m.transmissionFactor = transmissionFactor;
 
     m.normalTexture = mat.normalTexture.index >= 0 ? map[mat.normalTexture.index] : -1;
     m.occlusionTexture = mat.occlusionTexture.index >= 0 ? map[mat.occlusionTexture.index] : -1;
     m.emissiveTexture = mat.emissiveTexture.index >= 0 ? map[mat.emissiveTexture.index] : -1;
 
+    std::cout << "EMISSIVE FACTOR: " << m.emissiveFactor.x << m.emissiveFactor.y << m.emissiveFactor.z << std::endl;
+    std::cout << "EMISSIVE STRENGTH FLOAT: " << m.emissiveStrength << std::endl;
     return m;
 }
+
+void Renderer::extractEmissiveTriangles(const tinygltf::Model &model, const tinygltf::Primitive &prim, const glm::mat4 &worldTransform, const int materialIndex, std::vector<EmissiveTriangle> &outTris) {
+    const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
+    const auto& posView = model.bufferViews[posAcc.bufferView];
+    const float* positions = reinterpret_cast<const float*>(model.buffers[posView.buffer].data.data() + posView.byteOffset + posAcc.byteOffset);
+
+    const auto& texAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
+    const auto& texView = model.bufferViews[texAcc.bufferView];
+    const float* texCoords = reinterpret_cast<const float*>(model.buffers[texView.buffer].data.data() + texView.byteOffset + texAcc.byteOffset);
+
+    const auto& idxAcc = model.accessors[prim.indices];
+    const auto& idxView = model.bufferViews[idxAcc.bufferView];
+    const void* idxData = model.buffers[idxView.buffer].data.data() + idxView.byteOffset + idxAcc.byteOffset;
+
+    bool is16Bit = (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT);
+
+    // loop over every triangle
+    for (size_t i = 0; i < idxAcc.count; i += 3) {
+        uint32_t i0 = is16Bit ? reinterpret_cast<const uint16_t*>(idxData)[i]   : reinterpret_cast<const uint32_t*>(idxData)[i];
+        uint32_t i1 = is16Bit ? reinterpret_cast<const uint16_t*>(idxData)[i+1] : reinterpret_cast<const uint32_t*>(idxData)[i+1];
+        uint32_t i2 = is16Bit ? reinterpret_cast<const uint16_t*>(idxData)[i+2] : reinterpret_cast<const uint32_t*>(idxData)[i+2];
+
+        // fetch vertices and transform to world space
+        glm::vec3 v0 = glm::vec3(worldTransform * glm::vec4(positions[i0*3+0], positions[i0*3+1], positions[i0*3+2], 1.0f));
+        glm::vec3 v1 = glm::vec3(worldTransform * glm::vec4(positions[i1*3+0], positions[i1*3+1], positions[i1*3+2], 1.0f));
+        glm::vec3 v2 = glm::vec3(worldTransform * glm::vec4(positions[i2*3+0], positions[i2*3+1], positions[i2*3+2], 1.0f));
+
+        glm::vec2 uv0 = glm::vec2(texCoords[i0*2+0], texCoords[i0*2+1]);
+        glm::vec2 uv1 = glm::vec2(texCoords[i1*2+0], texCoords[i1*2+1]);
+        glm::vec2 uv2 = glm::vec2(texCoords[i2*2+0], texCoords[i2*2+1]);
+
+        EmissiveTriangle tri;
+        tri.v0 = v0;
+        tri.v1 = v1;
+        tri.v2 = v2;
+        tri.u0 = uv0;
+        tri.u1 = uv1;
+        tri.u2 = uv2;
+        tri.materialIndex = materialIndex;
+
+        outTris.push_back(tri);
+    }
+
+    constructEmissiveTrianglesCDF(outTris);
+}
+
+void Renderer::constructEmissiveTrianglesCDF(std::vector<EmissiveTriangle> &tris) {
+    float total = 0.0f;
+    for (auto& tri : tris) {
+        const float area = 0.5f * length(cross(tri.v1 - tri.v0, tri.v2 - tri.v0));
+        total += area;
+        tri.cdfWeight = total;
+    }
+    for (auto& tri : tris) {
+        tri.cdfWeight /= total;
+    }
+}
+
 
 void Renderer::createScene_GLTF() {
     namespace fs = std::filesystem;
@@ -2767,6 +2860,8 @@ void Renderer::recreateScene_GLTF() {
     createBottomLevelAccelerationStructures();
     createTopLevelAccelerationStructure();
     createDescriptorSet_RT();
+
+    std::cout << "Num em. triangles:" << emissiveTriangles.size() << std::endl;
 }
 
 void Renderer::initGui() {

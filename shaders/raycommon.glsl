@@ -1,9 +1,12 @@
 #ifndef COMMON_GLSL
 #define COMMON_GLSL
 
+const float PI = 3.14159265359;
+
 struct hitPayload {
     vec4 ColorAndDistance;
     vec4 ScatterDir;
+    vec3 Radiance;
     uint RandomSeed;
 };
 
@@ -12,7 +15,6 @@ struct shadowPayload {
 };
 
 const vec3 sunColor = vec3(10.0, 9.0, 7.0);
-
 
 vec3 mix(vec3 a, vec3 b, vec3 c, vec3 barycentrics)
 {

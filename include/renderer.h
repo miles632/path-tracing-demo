@@ -93,18 +93,6 @@ struct MeshInfo {
     uint32_t primitiveCount;
 };
 
-struct LightInfo {
-    glm::vec3 position;
-    glm::vec3 color;
-    glm::vec3 direction;
-    float intensity;
-    float range;
-    float innerConeCos;
-    float outerConeCos;
-    int type; // 0 = point 1 = spot 2 = directional
-    int padding[3];
-};
-
 struct Renderer {
     void init() {
         initWindow();
@@ -138,7 +126,7 @@ struct Renderer {
     std::vector<VkCommandBuffer> commandBuffers;
 
     const char* scenes[4] = {"dragon/", "Sponza/glTF/", "sphereTest/", "bistro/"};
-    size_t sceneIndex = 1;
+    size_t sceneIndex = 2;
     bool pendingSceneRecreate = false;
     bool cameraStateChanged = false;
 
@@ -179,7 +167,7 @@ struct Renderer {
     std::vector<PrimitiveInfo> primitiveInfos;
     std::vector<SceneInstance> sceneInstances;
     std::vector<MeshInfo> meshInfos;
-    std::vector<LightInfo> lightInfos;
+    std::vector<EmissiveTriangle> emissiveTriangles;
 
     Arena vertexArena;
     Arena indexArena;
@@ -334,6 +322,9 @@ struct Renderer {
     void recreateScene_GLTF();
 
     Material fetchMaterialInfo(const tinygltf::Material& mat, const std::vector<int>& map);
+    void extractEmissiveTriangles(const tinygltf::Model& model, const tinygltf::Primitive& prim, const glm::mat4& worldTransform,
+        int materialIndex, std::vector<EmissiveTriangle>& outTris);
+    void constructEmissiveTrianglesCDF(std::vector<EmissiveTriangle>& tris);
 
     static glm::vec3 getVec3FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView& bufferView, const tinygltf::Buffer& buffer, const size_t index);
     static glm::vec2 getVec2FromAccessor(const tinygltf::Accessor& accessor, const tinygltf::BufferView &bufferView, const tinygltf::Buffer &buffer, const size_t index);
